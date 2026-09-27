@@ -592,7 +592,7 @@ async function poll(){
     if (selected) renderInspector();
   } catch {
     document.body.classList.add('offline');
-    $('#stats').textContent = 'Map server stopped. Run ccmap to start it.';
+    $('#stats').textContent = 'Map server stopped. Run hivemap to start it.';
   }
   setTimeout(poll, 1000);
 }

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# hivemap — live map of your Claude Code sessions.
+#   hivemap          start the server if needed and open the map window
+#   hivemap tui      show the map in this terminal
+#   hivemap pane     show it in a new herdr pane beside this one
+#   hivemap serve    start the server only (also: start)
+#   hivemap status   say whether it is running
+#   hivemap stop     stop the server
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PORT="${HIVEMAP_PORT:-7777}"
+URL="http://127.0.0.1:$PORT"
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hivemap.log"
+
+up() { curl -fs -o /dev/null --max-time 1 "$URL/api/state"; }
+
+case "${1:-open}" in
+  status) up && echo "hivemap is running at $URL" || echo "hivemap is not running"; exit 0 ;;
+  stop)   pkill -f 'hivemap.*/server/overlay\.py' && echo "hivemap stopped" || echo "hivemap was not running"; exit 0 ;;
+  pane)
+    [ -n "${HERDR_PANE_ID:-}" ] || { echo "hivemap: not inside herdr, run 'hivemap tui' instead" >&2; exit 1; }
+    pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
+      && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null \
+      && echo "hivemap: map open in herdr pane $pane" || { echo "hivemap: could not open a herdr pane" >&2; exit 1; }
+    exit 0 ;;
+  open|serve|start|tui) ;;
+  *) echo "usage: hivemap [open|tui|pane|serve|start|status|stop]" >&2; exit 2 ;;
+esac
+
+if ! up; then
+  mkdir -p "$(dirname "$LOG")"
+  PORT="$PORT" setsid -f python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
+  for _ in $(seq 30); do up && break; sleep 0.1; done
+  up || { echo "hivemap: server did not start, see $LOG" >&2; exit 1; }
+fi
+
+[ "${1:-open}" = tui ] && exec python3 "$ROOT/server/tui.py"   # server runs too, so selection syncs with the web map
+
+if [ "${1:-open}" = open ]; then
+  for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+    if command -v "$b" >/dev/null; then
+      setsid -f "$b" --app="$URL" --window-size=1100,760 >/dev/null 2>&1 </dev/null
+      echo "hivemap: map open at $URL"
+      exit 0
+    fi
+  done
+  setsid -f xdg-open "$URL" >/dev/null 2>&1 </dev/null
+fi
+echo "hivemap: map at $URL"

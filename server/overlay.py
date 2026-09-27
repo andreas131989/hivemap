@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live map of running Claude Code sessions and their agents.
 
-Started by `ccmap` (bin/ccmap); serves http://127.0.0.1:7777
+Started by `hivemap` (bin/hivemap); serves http://127.0.0.1:7777
 """
 import json
 import os

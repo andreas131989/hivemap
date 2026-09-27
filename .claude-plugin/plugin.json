@@ -1,6 +1,6 @@
 {
-  "name": "ccmap",
-  "version": "0.6.1",
+  "name": "hivemap",
+  "version": "0.7.0",
   "description": "Live, interactive map of your running Claude Code sessions, subagents, tool calls and the files they touch. Jumps to the session's herdr pane.",
   "author": { "name": "Andreas Krivas" }
 }

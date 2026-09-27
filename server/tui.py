@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Terminal view of the ccmap map: session/agent tree on the left, tool calls on the right.
+"""Terminal view of the hivemap map: session/agent tree on the left, tool calls on the right.
 
 Tree:   ↑↓/jk select · ←→/space fold · enter jump to herdr pane · tab go to calls · f follow · q quit
 Calls:  ↑↓ select · enter/→ open call (input + output) · tab/← back to tree
 Call:   ↑↓/pgup/pgdn scroll · tab/←/backspace back to calls
 Mouse:  click a row or a call, click a selected session to fold, wheel scrolls the side it is over.
-Selection is shared with the web map through the ccmap server (when it is running).
+Selection is shared with the web map through the hivemap server (when it is running).
 """
 import json
 import os
@@ -27,12 +27,12 @@ MOUSE = re.compile(r'\x1b\[<(\d+);(\d+);(\d+)M')
 UNSAFE = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)?|\x1b.?|[\x00-\x09\x0b-\x1f\x7f]')
 UP, DOWN, RIGHT, LEFT = ('\x1b[A', '\x1bOA', 'k'), ('\x1b[B', '\x1bOB', 'j'), ('\x1b[C', '\x1bOC', 'l'), ('\x1b[D', '\x1bOD', 'h')
 ENTER, TAB, BACK, PGUP, PGDN = ('\r', '\n'), '\t', ('\x7f', '\x08'), '\x1b[5~', '\x1b[6~'
-URL = f"http://127.0.0.1:{os.environ.get('CCMAP_PORT', 7777)}"
+URL = f"http://127.0.0.1:{os.environ.get('HIVEMAP_PORT', 7777)}"
 ME = f'tui-{os.getpid()}'
 
 
 def api(path, body=None):
-    """Talk to the ccmap server; None when it is not running."""
+    """Talk to the hivemap server; None when it is not running."""
     try:
         req = urllib.request.Request(URL + path, data=body and json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
         with urllib.request.urlopen(req, timeout=0.3) as r:
