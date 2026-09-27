@@ -50,10 +50,17 @@ jobs:
           PY
           sleep 2
           bin/hivemap   # the server is up, so this only opens the window, exactly as for a user
-          pgrep -fl -- "--app=http://127.0.0.1:7801"   # an app window, not a tab
-          for _ in $(seq 40); do grep -q "GET /api/state .*Chrome" requests.log && break; sleep 0.5; done   # up to 20s
+          # Chrome starts in the background: give it up to 15s to appear as an app window (not a tab), then
+          # up to 15s more to load the map and start polling the server
+          for _ in $(seq 30); do pgrep -f -- "--app=http://127.0.0.1:7801" >/dev/null && break; sleep 0.5; done
+          for _ in $(seq 30); do grep -q "GET /api/state .*Chrome" requests.log && break; sleep 0.5; done
+          if ! grep -q "GET /api/state .*Chrome" requests.log; then
+            echo "Chrome processes:"; pgrep -fl -i chrome | cut -c1-200 || echo "(none)"
+            echo "server saw:"; cat requests.log
+            exit 1
+          fi
+          pgrep -fl -- "--app=http://127.0.0.1:7801" | cut -c1-160
           grep -m3 "Chrome" requests.log
-          grep -q "GET /api/state .*Chrome" requests.log   # Chrome loaded the map and is polling it
           pkill -f -- "--app=http://127.0.0.1:7801" || true
           kill %1 || true
       - name: Desktop notification command (macOS)
