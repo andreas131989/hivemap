@@ -12,6 +12,7 @@ jobs:
   test:
     name: ${{ matrix.os }} · python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -31,22 +32,33 @@ jobs:
         run: shellcheck bin/hivemap
       - name: Open the map for real (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 3
         env:
           HIVEMAP_PORT: '7801'
-          HIVEMAP_NOTIFY: '0'
         run: |
           ls -d "/Applications/Google Chrome.app"
-          bin/hivemap
-          # the launcher must have started Chrome as an app window on the map's address...
-          for _ in $(seq 30); do pgrep -f -- "--app=http://127.0.0.1:7801" >/dev/null && break; sleep 1; done
-          pgrep -fl -- "--app=http://127.0.0.1:7801"
-          # ...and Chrome must actually be loading it: the page polls the server every second
-          for _ in $(seq 60); do lsof -nP -iTCP:7801 | grep -i chrome && break; sleep 0.5; done
-          lsof -nP -iTCP:7801 | grep -qi chrome
-          bin/hivemap stop
+          # the server, with request logging on, so we can see the browser load the map
+          python - > requests.log 2>&1 <<'PY' &
+          import sys
+          sys.path.insert(0, 'server')
+          import overlay
+          overlay.PORT = 7801
+          class Logged(overlay.Handler):
+              def log_message(self, fmt, *args):
+                  print(self.command, self.path, self.headers.get('User-Agent', ''), flush=True)
+          overlay.Server(('127.0.0.1', 7801), Logged).serve_forever()
+          PY
+          sleep 2
+          bin/hivemap   # the server is up, so this only opens the window, exactly as for a user
+          pgrep -fl -- "--app=http://127.0.0.1:7801"   # an app window, not a tab
+          for _ in $(seq 60); do grep -q "GET /api/state .*Chrome" requests.log && break; sleep 0.5; done
+          grep -m3 "Chrome" requests.log
+          grep -q "GET /api/state .*Chrome" requests.log   # Chrome loaded the map and is polling it
           pkill -f -- "--app=http://127.0.0.1:7801" || true
+          kill %1 || true
       - name: Desktop notification command (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 2
         run: |
           python - <<'PY'
           import subprocess, sys
