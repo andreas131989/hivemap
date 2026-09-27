@@ -5,7 +5,7 @@
 A live map of your running [Claude Code](https://claude.com/claude-code) sessions: their subagents, the tool
 calls they're making, the files they touch, and which ones are waiting on you.
 
-![hivemap: three sessions. checkout-api is yellow, waiting on you; web-app has three subagents at work, each with its tool calls and the files it touched](docs/map.png)
+![hivemap: sessions and subagents at work; one stops for approval and turns yellow; clicking it shows why, and one more click jumps to its terminal pane](docs/demo.gif)
 
 Two views of the same data, kept in sync:
 
@@ -17,11 +17,7 @@ Two views of the same data, kept in sync:
 Select something in one view and the other follows.
 
 When a session stops for you, it turns yellow and says why, you get a desktop notification, and one click (or
-`enter` in the terminal view) takes you to its tmux or herdr pane:
-
-![The waiting session selected: "Waiting on you: permission prompt", a Jump to terminal pane button, and its calls, the newest still pending](docs/waiting.png)
-
-The same, in the terminal view:
+`enter` in the terminal view) takes you to its tmux or herdr pane. The same, in the terminal view:
 
 ```
 ▾ 1 ! checkout-api  84k              │checkout-api  waiting: permission prompt · opus-5-5 · 84k ctx · pid 378235
