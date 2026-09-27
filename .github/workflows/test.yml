@@ -1,0 +1,37 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ['3.9', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: python -m unittest -v
+      - name: Shell lint
+        if: runner.os == 'Linux'
+        run: shellcheck bin/hivemap
+
+  # One stable name for branch protection to require, whatever the matrix becomes.
+  ok:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - run: test "${{ needs.test.result }}" = success

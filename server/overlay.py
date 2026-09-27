@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -435,6 +436,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1:   # the launcher passes the port, so `hivemap stop` can tell instances apart
+        PORT = int(sys.argv[1])
     print(f'hivemap on http://127.0.0.1:{PORT}', flush=True)
     if HERDR and os.environ.get('HIVEMAP_NOTIFY', '1') != '0':   # waiting is only known through herdr
         threading.Thread(target=watch_waiting, daemon=True).start()

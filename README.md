@@ -1,5 +1,7 @@
 # hivemap
 
+[![test](https://github.com/andreas131989/hivemap/actions/workflows/test.yml/badge.svg)](https://github.com/andreas131989/hivemap/actions/workflows/test.yml)
+
 A live map of your running [Claude Code](https://claude.com/claude-code) sessions: their subagents, the tool
 calls they're making, the files they touch, and which ones are waiting on you.
 
@@ -93,14 +95,19 @@ directly and syncs its selection through the server. No dependencies beyond the 
 ## Develop
 
 ```sh
-python3 server/test_overlay.py   # self-check for the transcript parser and shared call ids
+python3 -m unittest -v   # the whole suite: parser, state, server, terminal view, page, launcher
 ```
+
+The tests use a throwaway `~/.claude` and a random port, so they never touch your real sessions or a
+running hivemap. See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules; every change goes through a
+pull request and CI on Linux and macOS.
 
 - Port: set `HIVEMAP_PORT` (default `7777`). Log: `$XDG_STATE_HOME/hivemap.log`, which is
   `~/.local/state/hivemap.log` by default.
 - Claude Code runs a cached copy of the plugin. After changing files, bump `version` in
   `.claude-plugin/plugin.json` and run
   `claude plugin marketplace update hivemap && claude plugin update hivemap@hivemap`.
+- Security issues: see [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -18,7 +18,8 @@ detach() { if command -v setsid >/dev/null; then setsid -f "$@"; else nohup "$@"
 
 case "${1:-open}" in
   status) up && echo "hivemap is running at $URL" || echo "hivemap is not running"; exit 0 ;;
-  stop)   pkill -f '^python3 .*hivemap.*/server/overlay\.py$' && echo "hivemap stopped" || echo "hivemap was not running"; exit 0 ;;
+  # matches only this port's server: never an editor with the file open, never another instance
+  stop)   pkill -f "^python3 .*hivemap.*/server/overlay\\.py $PORT\$" && echo "hivemap stopped" || echo "hivemap was not running"; exit 0 ;;
   pane)
     [ -n "${HERDR_PANE_ID:-}" ] || { echo "hivemap: not inside herdr, run 'hivemap tui' instead" >&2; exit 1; }
     pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
@@ -31,7 +32,7 @@ esac
 
 if ! up; then
   mkdir -p "$(dirname "$LOG")"
-  HIVEMAP_PORT="$PORT" detach python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
+  detach python3 "$ROOT/server/overlay.py" "$PORT" >"$LOG" 2>&1 </dev/null
   for _ in $(seq 30); do up && break; sleep 0.1; done
   up || { echo "hivemap: server did not start, see $LOG" >&2; exit 1; }
 fi
