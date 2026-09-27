@@ -29,7 +29,7 @@ esac
 
 if ! up; then
   mkdir -p "$(dirname "$LOG")"
-  PORT="$PORT" setsid -f python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
+  HIVEMAP_PORT="$PORT" setsid -f python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
   for _ in $(seq 30); do up && break; sleep 0.1; done
   up || { echo "hivemap: server did not start, see $LOG" >&2; exit 1; }
 fi

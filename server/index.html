@@ -21,7 +21,7 @@ button{font:inherit;color:inherit}
 #map.grabbing{cursor:grabbing}
 #map.pointer{cursor:pointer}
 
-.hud{position:fixed;left:12px;top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px);max-width:calc(100% - 24px)}
+.hud{position:fixed;left:12px;top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px);max-width:calc(100% - 350px)}
 .logo{display:flex;align-items:center;gap:8px;font-weight:650}
 .beacon{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:ring 1.6s infinite}
 .offline .beacon{background:var(--err);animation:none}
@@ -75,7 +75,7 @@ pre.io{margin:0;font:11.5px/1.5 var(--mono);color:#C9CDD3;background:#101317;bor
 #tip div{color:var(--muted);font-family:var(--mono);font-size:11px;word-break:break-word}
 .empty{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;color:var(--muted);text-align:center}
 .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
-@media (max-width:640px){#inspector{top:auto;height:48%;right:12px;left:12px;width:auto}}
+@media (max-width:640px){.hud{max-width:calc(100% - 24px)}.tools{top:84px}#inspector{top:auto;height:48%;right:12px;left:12px;width:auto}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live map of running Claude Code sessions and their agents.
 
-Started by `hivemap` (bin/hivemap); serves http://127.0.0.1:7777
+Started by `hivemap` (bin/hivemap); serves http://127.0.0.1:$HIVEMAP_PORT (default 7777)
 """
 import json
 import os
@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 
 CLAUDE = Path.home() / '.claude'
 HERE = Path(__file__).resolve().parent
-PORT = int(os.environ.get('PORT', 7777))
+PORT = int(os.environ.get('HIVEMAP_PORT', 7777))
 KEEP_S = 3600          # history sent to the page
 AGENT_QUIET_S = 12
 DETAIL_CHARS = 4000    # per call input/output kept for the terminal view's detail pane     # a subagent whose file changed this recently counts as running
@@ -389,5 +389,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    print(f'Claude Code map on http://127.0.0.1:{PORT}', flush=True)
+    print(f'hivemap on http://127.0.0.1:{PORT}', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()

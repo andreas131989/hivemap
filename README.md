@@ -3,7 +3,7 @@
 A live map of your running [Claude Code](https://claude.com/claude-code) sessions: their subagents, the tool
 calls they're making, the files they touch, and which ones are waiting on you.
 
-![hivemap showing three sessions, their tool calls and the files they touched](docs/map.png)
+![hivemap: a session with four subagents fanned out around it, each with its tool calls and the files they read or edited](docs/map.png)
 
 Two views of the same data, kept in sync:
 
@@ -14,6 +14,8 @@ Two views of the same data, kept in sync:
 
 Select something in one view and the other follows.
 
+![Clicking a tool call shows its full input and output](docs/call.png)
+
 hivemap only reads the files Claude Code already writes under `~/.claude` (session list and transcripts). It
 sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthropic.
 
@@ -21,6 +23,7 @@ sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthr
 
 - Linux (the launcher uses `setsid` and Linux browser names; macOS is not supported yet)
 - Python 3.9 or newer, standard library only
+- `bash`, `curl` and `pkill` (standard on most distributions)
 - Chrome, Chromium, Brave or Edge for the web map window (anything else opens in your default browser)
 - Optional: [herdr](https://herdr.dev), the terminal workspace manager. With it, hivemap can
   jump to a session's pane and show which sessions are waiting on you.
@@ -54,20 +57,21 @@ ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/hivema
 | `/hivemap:map status` | `hivemap status` | Say whether the server is running |
 | `/hivemap:map stop` | `hivemap stop` | Stop the server |
 
-**Web map:** drag to pan, scroll to zoom, click a node for details, double-click empty space to fit
-everything. Click a tool call, as a node or as a row in the side panel, to see its full input and output.
-**Follow** keeps the camera on whatever is active; `5m` / `15m` / `1h` sets how much history is shown.
+**Web map:** drag to pan, scroll or `+` / `-` to zoom, click a node for details. Dragging a node pins it;
+double-click it to let go. Click a tool call, as a node or as a row in the side panel, to see its full input
+and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera fitted to the map;
+`5m` / `15m` / `1h` sets how much history is shown; `Esc` closes the side panel.
 
 **Terminal view:**
 
 | Keys | |
 |---|---|
 | `↑` `↓` or `j` `k` | Select a session or agent; its tool calls show on the right |
-| `←` `→` or space | Fold or unfold a session |
+| `←` `→`, `h` `l` or space | Fold or unfold a session |
 | `enter` or `1`–`9` | Jump to that session's herdr pane |
-| `tab` | Move into the call list: `↑` `↓` pick a call, `enter` opens its input and output, `←` goes back |
+| `tab` | Move into the call list: `↑` `↓` pick a call, `enter` or `→` opens its input and output, `←`, `tab` or backspace goes back |
 | `pgup` `pgdn` | Scroll |
-| `f` | Follow the busiest session |
+| `f` | Follow the top session (waiting first, then busy) and its most recently active agent |
 | `q` | Quit |
 
 The mouse works too: click a row or a call to select or open it, click a selected session to fold it, and
@@ -88,7 +92,8 @@ directly and syncs its selection through the server. No dependencies beyond the 
 python3 server/test_overlay.py   # self-check for the transcript parser and shared call ids
 ```
 
-- Port: set `HIVEMAP_PORT` (default `7777`). Log: `~/.local/state/hivemap.log`.
+- Port: set `HIVEMAP_PORT` (default `7777`). Log: `$XDG_STATE_HOME/hivemap.log`, which is
+  `~/.local/state/hivemap.log` by default.
 - Claude Code runs a cached copy of the plugin. After changing files, bump `version` in
   `.claude-plugin/plugin.json` and run
   `claude plugin marketplace update hivemap && claude plugin update hivemap@hivemap`.
