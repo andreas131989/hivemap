@@ -3,7 +3,6 @@ import http.client
 import json
 import threading
 import unittest
-from http.server import ThreadingHTTPServer
 from urllib.parse import quote
 
 from tests import FakeClaude, line, overlay, stamp, tool_result, tool_use
@@ -18,7 +17,7 @@ class ServerTest(unittest.TestCase):
             line(type='assistant', timestamp=stamp(5), message={'content': [tool_use('t1', 'Bash', command='make')]}),
             line(type='user', timestamp=stamp(4), message={'content': [tool_result('t1', 'built')]}),
         ], name='proj')
-        cls.httpd = ThreadingHTTPServer(('127.0.0.1', 0), overlay.Handler)
+        cls.httpd = overlay.Server(('127.0.0.1', 0), overlay.Handler)
         cls.port = cls.httpd.server_address[1]
         cls.saved_port, overlay.PORT = overlay.PORT, cls.port
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()

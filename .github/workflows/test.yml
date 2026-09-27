@@ -24,20 +24,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Unit tests
         run: python -m unittest -v
-        continue-on-error: ${{ runner.os == 'macOS' }}   # temporary, while debugging the macOS launcher
       - name: Shell lint
         if: runner.os == 'Linux'
         run: shellcheck bin/hivemap
-      - name: Debug launcher start (temporary)
-        if: runner.os == 'macOS'
-        run: |
-          export HIVEMAP_PORT=7801 HIVEMAP_NOTIFY=0
-          (bash -x bin/hivemap start > trace.txt 2>&1; echo "exit=$?" >> trace.txt) &
-          sleep 15
-          echo "--- trace"; cat trace.txt
-          echo "--- log"; cat ~/.local/state/hivemap.log || true
-          echo "--- procs"; ps -axo pid,ppid,command | grep -i "hivemap\|overlay\|curl" | grep -v grep || true
-          echo "--- curl"; curl -sv --max-time 3 http://127.0.0.1:7801/api/select 2>&1 | tail -15 || true
 
   # One stable name for branch protection to require, whatever the matrix becomes.
   ok:

@@ -20,7 +20,8 @@ detach() { python3 -c 'import subprocess, sys; subprocess.Popen(sys.argv[1:], st
 case "${1:-open}" in
   status) if up; then echo "hivemap is running at $URL"; else echo "hivemap is not running"; fi; exit 0 ;;
   # matches only this port's server: never an editor with the file open, never another instance
-  stop)   if pkill -f "^python3 .*hivemap.*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
+  # (the interpreter shows up as python3 on Linux but as .../Python.app/.../Python on macOS)
+  stop)   if pkill -f "^[^ ]*[Pp]ython[0-9.]* [^ ]*hivemap[^ ]*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
   pane)
     [ -n "${HERDR_PANE_ID:-}" ] || { echo "hivemap: not inside herdr, run 'hivemap tui' instead" >&2; exit 1; }
     if pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
