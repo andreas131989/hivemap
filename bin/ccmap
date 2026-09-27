@@ -3,7 +3,7 @@
 #   ccmap          start the server if needed and open the map window
 #   ccmap tui      show the map in this terminal
 #   ccmap pane     show it in a new herdr pane beside this one
-#   ccmap serve    start the server only
+#   ccmap serve    start the server only (also: start)
 #   ccmap status   say whether it is running
 #   ccmap stop     stop the server
 set -u
@@ -23,8 +23,8 @@ case "${1:-open}" in
       && herdr pane run "$pane" "$ROOT/bin/ccmap tui" >/dev/null \
       && echo "ccmap: map open in herdr pane $pane" || { echo "ccmap: could not open a herdr pane" >&2; exit 1; }
     exit 0 ;;
-  open|serve|tui) ;;
-  *) echo "usage: ccmap [open|tui|pane|serve|status|stop]" >&2; exit 2 ;;
+  open|serve|start|tui) ;;
+  *) echo "usage: ccmap [open|tui|pane|serve|start|status|stop]" >&2; exit 2 ;;
 esac
 
 if ! up; then

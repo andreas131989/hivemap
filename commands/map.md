@@ -1,6 +1,6 @@
 ---
 description: Open the live map of your Claude Code sessions, agents, tool calls and files
-argument-hint: "[pane|stop|status]"
+argument-hint: "[pane|start|stop|status]"
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/ccmap:*)
 ---
 

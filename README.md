@@ -6,7 +6,7 @@ Reads Claude Code's own files in `~/.claude` (sessions and transcripts); serves 
 ## Use
 
 - In Claude Code: `/ccmap:map` (browser window) or `/ccmap:map pane` (herdr pane beside this one)
-- In a terminal: `ccmap` · `ccmap tui` · `ccmap pane` · `ccmap serve` · `ccmap status` · `ccmap stop`
+- In a terminal: `ccmap` · `ccmap tui` · `ccmap pane` · `ccmap serve` (or `start`) · `ccmap status` · `ccmap stop`
 - In the terminal view: `↑↓`/`jk` select a session or agent (its tool calls show on the right), `←→`/space fold,
   `enter` or `1`-`9` jump to the herdr pane, `pgup`/`pgdn` scroll, `f` follow the busy session, `q` quit.
   `tab` moves into the call list: `↑↓` pick a call, `enter` opens its full input and output, `←` goes back.
