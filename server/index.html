@@ -89,6 +89,7 @@ pre.io{margin:0;font:11.5px/1.5 var(--mono);color:#C9CDD3;background:#101317;bor
   <div class="seg" role="group" aria-label="Show on map">
     <button id="tFiles" aria-pressed="true">Files</button>
     <button id="tCalls" aria-pressed="true">Calls</button>
+    <button id="tDone" aria-pressed="true" title="Show subagents that have finished">Done</button>
   </div>
   <div class="seg" role="group" aria-label="Time window" id="win">
     <button data-w="300">5m</button><button data-w="900">15m</button><button data-w="3600">1h</button>
@@ -115,7 +116,7 @@ const home = p => String(p || '').replace(/^\/home\/[^/]+/, '~');
 const modelName = m => m ? m.replace(/^claude-/, '').replace(/-(\d+)-(\d+)(-\d{8})?$/, ' $1.$2').replace(/-(\d+)$/, ' $1') : '—';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-let data = null, offset = 0, win = 900, showFiles = true, showCalls = true;
+let data = null, offset = 0, win = 900, showFiles = true, showCalls = true, showDone = true;
 try { win = Number(localStorage.getItem('win')) || 900; } catch {}
 const nowS = () => (Date.now() + offset) / 1000;
 
@@ -150,15 +151,16 @@ function sync(){
     const sid = `s:${s.id}`;
     const sn = upsert(sid, 'session', {s, label:s.name, active:s.status !== 'idle', waiting:s.status === 'waiting'}, null);
     const agentNode = {main: sn};
-    for (const a of s.agents) if (a.id !== 'main'){
+    const agents = s.agents.filter(a => a.id === 'main' || showDone || a.running);
+    for (const a of agents) if (a.id !== 'main'){
       const parent = agentNode[a.parent] || sn;
       agentNode[a.id] = upsert(`a:${s.id}:${a.id}`, 'agent', {s, a, label:a.label, active:a.running}, parent);
     }
-    for (const a of s.agents) if (a.id !== 'main'){
+    for (const a of agents) if (a.id !== 'main'){
       const n = agentNode[a.id], p = agentNode[a.parent] || sn;
       E.push({a:p.id, b:n.id, kind:'spawn', len:95, color:COL.agent, active:a.running});
     }
-    for (const a of s.agents){
+    for (const a of agents){
       const an = agentNode[a.id];
       const evs = a.events.filter(e => e.c !== 'prompt' && (e.t1 ?? now) >= from);
       if (showCalls){
@@ -434,6 +436,7 @@ addEventListener('keydown', e => {
 $('#fit').onclick = () => setFollow(!follow);
 $('#tFiles').onclick = e => { showFiles = !showFiles; e.target.setAttribute('aria-pressed', String(showFiles)); if (data) sync(); };
 $('#tCalls').onclick = e => { showCalls = !showCalls; e.target.setAttribute('aria-pressed', String(showCalls)); if (data) sync(); };
+$('#tDone').onclick = e => { showDone = !showDone; e.target.setAttribute('aria-pressed', String(showDone)); if (data) sync(); };
 document.querySelectorAll('#win button').forEach(b => {
   b.setAttribute('aria-pressed', String(Number(b.dataset.w) === win));
   b.onclick = () => {

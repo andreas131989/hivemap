@@ -7,29 +7,37 @@
 #   hivemap status   say whether it is running
 #   hivemap stop     stop the server
 set -u
-ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+ROOT="$(cd "$(dirname "$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$0")")/.." && pwd)"
 PORT="${HIVEMAP_PORT:-7777}"
 URL="http://127.0.0.1:$PORT"
 LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hivemap.log"
 
 up() { curl -fs -o /dev/null --max-time 1 "$URL/api/state"; }
+# Run in the background in a session of its own, outliving this shell. Python's start_new_session is
+# setsid on every platform (macOS has no setsid command) and closes stray file descriptors.
+detach() { python3 -c 'import subprocess, sys; subprocess.Popen(sys.argv[1:], start_new_session=True)' "$@"; }
 
 case "${1:-open}" in
-  status) up && echo "hivemap is running at $URL" || echo "hivemap is not running"; exit 0 ;;
-  stop)   pkill -f 'hivemap.*/server/overlay\.py' && echo "hivemap stopped" || echo "hivemap was not running"; exit 0 ;;
+  status) if up; then echo "hivemap is running at $URL"; else echo "hivemap is not running"; fi; exit 0 ;;
+  # matches only this port's server: never an editor with the file open, never another instance
+  # (the interpreter shows up as python3 on Linux but as .../Python.app/.../Python on macOS)
+  stop)   if pkill -f "^[^ ]*[Pp]ython[0-9.]* [^ ]*hivemap[^ ]*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
   pane)
     [ -n "${HERDR_PANE_ID:-}" ] || { echo "hivemap: not inside herdr, run 'hivemap tui' instead" >&2; exit 1; }
-    pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
-      && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null \
-      && echo "hivemap: map open in herdr pane $pane" || { echo "hivemap: could not open a herdr pane" >&2; exit 1; }
-    exit 0 ;;
+    if pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
+        && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null; then
+      echo "hivemap: map open in herdr pane $pane"
+      exit 0
+    fi
+    echo "hivemap: could not open a herdr pane" >&2
+    exit 1 ;;
   open|serve|start|tui) ;;
   *) echo "usage: hivemap [open|tui|pane|serve|start|status|stop]" >&2; exit 2 ;;
 esac
 
 if ! up; then
   mkdir -p "$(dirname "$LOG")"
-  HIVEMAP_PORT="$PORT" setsid -f python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
+  detach python3 "$ROOT/server/overlay.py" "$PORT" >"$LOG" 2>&1 </dev/null
   for _ in $(seq 30); do up && break; sleep 0.1; done
   up || { echo "hivemap: server did not start, see $LOG" >&2; exit 1; }
 fi
@@ -37,13 +45,25 @@ fi
 [ "${1:-open}" = tui ] && exec python3 "$ROOT/server/tui.py"   # server runs too, so selection syncs with the web map
 
 if [ "${1:-open}" = open ]; then
-  for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
-    if command -v "$b" >/dev/null; then
-      setsid -f "$b" --app="$URL" --window-size=1100,760 >/dev/null 2>&1 </dev/null
-      echo "hivemap: map open at $URL"
-      exit 0
-    fi
-  done
-  setsid -f xdg-open "$URL" >/dev/null 2>&1 </dev/null
+  # A Chromium-family browser opens the map as its own app window; anything else gets a normal tab.
+  if [ "$(uname)" = Darwin ]; then
+    for app in "Google Chrome" "Chromium" "Brave Browser" "Microsoft Edge"; do
+      if [ -d "/Applications/$app.app" ]; then
+        open -na "$app" --args --app="$URL" --window-size=1100,760
+        echo "hivemap: map open at $URL"
+        exit 0
+      fi
+    done
+    open "$URL"
+  else
+    for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+      if command -v "$b" >/dev/null; then
+        detach "$b" --app="$URL" --window-size=1100,760 >/dev/null 2>&1 </dev/null
+        echo "hivemap: map open at $URL"
+        exit 0
+      fi
+    done
+    detach xdg-open "$URL" >/dev/null 2>&1 </dev/null
+  fi
 fi
 echo "hivemap: map at $URL"

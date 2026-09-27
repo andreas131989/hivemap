@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Terminal view of the hivemap map: session/agent tree on the left, tool calls on the right.
 
-Tree:   ↑↓/jk select · ←→/space fold · enter jump to herdr pane · tab go to calls · f follow · q quit
+Tree:   ↑↓/jk select · ←→/space fold · enter jump to herdr pane · tab go to calls · f follow · d hide finished · q quit
 Calls:  ↑↓ select · enter/→ open call (input + output) · tab/← back to tree
 Call:   ↑↓/pgup/pgdn scroll · tab/←/backspace back to calls
 Mouse:  click a row or a call, click a selected session to fold, wheel scrolls the side it is over.
@@ -26,6 +26,7 @@ MOUSE = re.compile(r'\x1b\[<(\d+);(\d+);(\d+)M')
 CUT = re.compile(r'\x1b(O|\[[^A-Za-z~]*)?$')   # an escape sequence the read ended in the middle of
 # Tool output can hold terminal escapes; drawing them raw would wreck the screen.
 UNSAFE = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)?|\x1b.?|[\x00-\x09\x0b-\x1f\x7f]')
+UNSAFE_BUT_TABS = re.compile(UNSAFE.pattern.replace('\\x00-\\x09', '\\x00-\\x08'))
 UP, DOWN, RIGHT, LEFT = ('\x1b[A', '\x1bOA', 'k'), ('\x1b[B', '\x1bOB', 'j'), ('\x1b[C', '\x1bOC', 'l'), ('\x1b[D', '\x1bOD', 'h')
 ENTER, TAB, BACK, PGUP, PGDN = ('\r', '\n'), '\t', ('\x7f', '\x08'), '\x1b[5~', '\x1b[6~'
 URL = f"http://127.0.0.1:{os.environ.get('HIVEMAP_PORT', 7777)}"
@@ -69,7 +70,7 @@ def fit(parts, width, sel=False):
 
 def wrap(text, width):
     out = []
-    for line in UNSAFE.sub('', text.expandtabs(4)).split('\n'):
+    for line in UNSAFE_BUT_TABS.sub('', text).expandtabs(4).split('\n'):   # tab stops count visible text only
         out += [line[i:i + width] for i in range(0, max(len(line), 1), width)]
     return out
 
@@ -83,7 +84,7 @@ def clamp(v, lo, hi):
     return max(lo, min(v, hi))
 
 
-def rows(st, closed):
+def rows(st, closed, hide_done=False):
     """Flatten sessions and their agents: [(key, session, agent|None, depth)]."""
     out = []
     for s in st['sessions']:
@@ -91,6 +92,8 @@ def rows(st, closed):
         if s['id'] not in closed:
             depth = {}
             for a in s['agents']:
+                if hide_done and a['parent'] and not a['running']:
+                    continue
                 d = depth[a['id']] = depth.get(a['parent'], 0) + 1 if a['parent'] else 1
                 out.append(((s['id'], a['id']), s, a, d))
     return out
@@ -165,7 +168,7 @@ def main():
     sys.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h')
     sel, idx, top, scroll, closed, follow, msg, fetched = None, 0, 0, 0, set(), False, '', 0
     focus, cur, opened, dscroll, start, head_n = 'tree', None, None, 0, 0, 0
-    seen_v, sent, adopt, pending = 0, None, True, ''
+    seen_v, sent, adopt, pending, hide_done = 0, None, True, '', False
     try:
         while True:
             if time.time() - fetched >= 1:
@@ -187,7 +190,7 @@ def main():
                 s = st['sessions'][0]
                 sel = (s['id'], max(s['agents'], key=lambda a: a['last'] or 0)['id'])
                 closed.discard(s['id'])
-            rs = rows(st, closed)
+            rs = rows(st, closed, hide_done)
             keys = [r[0] for r in rs]
             idx = keys.index(sel) if sel in keys else clamp(idx, 0, len(rs) - 1)
             sel = keys[idx] if keys else None
@@ -224,7 +227,8 @@ def main():
                 right, scroll, start = calls(head, events, st['now'], rw, body, scroll, cur if focus == 'events' else None)
             screen = [(left[i] if i < len(left) else ' ' * lw) + '\x1b[2m│\x1b[0m' + (right[i] if i < len(right) else '\x1b[K')
                       for i in range(body)]
-            foot = msg or {'tree': '↑↓ select · ←→ fold · enter jump · tab calls · f follow' + (' [on]' if follow else '') + ' · q quit',
+            foot = msg or {'tree': '↑↓ select · ←→ fold · enter jump · tab calls · f follow' + (' [on]' if follow else '')
+                                   + ' · d ' + ('show' if hide_done else 'hide') + ' done · q quit',
                            'events': '↑↓ select call · enter open · tab/← back · q quit',
                            'detail': '↑↓ pgup/pgdn scroll · ←/tab back · q quit'}[focus]
             sys.stdout.write('\x1b[H' + '\r\n'.join(screen) + f'\r\n\x1b[2m{foot[:w - 1]}\x1b[0m\x1b[K')
@@ -292,6 +296,8 @@ def main():
                     scroll += max(1, body - 6) * (1 if k == PGUP else -1)
                 elif k == 'f':
                     follow = not follow
+                elif k == 'd':
+                    hide_done = not hide_done
                 elif (k in ENTER and row) or (k.isdigit() and 0 < int(k) <= len(st['sessions'])):
                     s = row[1] if k in ENTER else st['sessions'][int(k) - 1]
                     try:
