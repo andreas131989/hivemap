@@ -241,6 +241,13 @@ def state(full=False):
                 j = session_json(s, now, full)
                 if j:
                     out.append(j)
+        # forget sessions that have ended, so a server left running for weeks doesn't keep growing
+        live = {j['id'] for j in out}
+        for sid in [sid for sid in paths if sid not in live]:
+            del paths[sid]
+        kept = [p.with_suffix('') for p in paths.values() if p]   # a live transcript, minus .jsonl = its subagent dir
+        for p in [p for p in tails if not any(p.with_suffix('') == k or k in p.parents for k in kept)]:
+            del tails[p]
     out.sort(key=lambda j: ({'waiting': 0, 'busy': 1}.get(j['status'], 2), -j['updated']))
     return {'now': now, 'jump': bool(HERDR or TMUX), 'sessions': out}
 

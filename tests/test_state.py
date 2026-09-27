@@ -69,6 +69,18 @@ class StateTest(unittest.TestCase):
         call = sessions[0]['agents'][0]['events'][0]
         self.assertIsNone(call['t1'], 'the call waiting for permission is still pending, not ended')
 
+    def test_ended_sessions_are_forgotten(self):
+        with FakeClaude() as fake:
+            fake.session('s1', [line(type='user', timestamp=stamp(5), message={'content': 'hi'})], subagents=[
+                ('a1', {'agentType': 'Explore', 'description': 'x'}, [line(type='user', timestamp=stamp(4), message={'content': 'go'})])])
+            fake.session('s2', [])
+            overlay.state()
+            self.assertEqual(len(overlay.tails), 3, 'two transcripts and one subagent are tailed')
+            (fake.dir / 'sessions' / 's1.json').unlink()   # s1 ends
+            overlay.state()
+            self.assertEqual(set(overlay.paths), {'s2'})
+            self.assertEqual([p.name for p in overlay.tails], ['s2.jsonl'], 'its transcript and subagent tails are dropped')
+
     def test_busy_before_idle(self):
         with FakeClaude() as fake:
             fake.session('idle-new', [], status='idle', updated=3000)

@@ -1,4 +1,6 @@
 ---
+name: map
+disable-model-invocation: true
 description: Open the live map of your Claude Code sessions, agents, tool calls and files
 argument-hint: "[pane|start|stop|status]"
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/bin/hivemap:*)

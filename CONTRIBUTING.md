@@ -25,7 +25,7 @@ Thanks for helping. hivemap is small on purpose, so a few ground rules:
 | `server/index.html` | The web map (one file: HTML, CSS, JS) |
 | `server/tui.py` | The terminal view |
 | `bin/hivemap` | Launcher: start/stop the server, open a view |
-| `commands/map.md`, `.claude-plugin/` | The Claude Code plugin |
+| `skills/map/SKILL.md`, `.claude-plugin/` | The Claude Code plugin (`/hivemap:map`) |
 | `tests/` | The test suite |
 
 ## Releasing

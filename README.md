@@ -66,14 +66,18 @@ claude plugin marketplace add andreas131989/hivemap
 claude plugin install hivemap@hivemap
 ```
 
-That gives you `/hivemap:map`. For the `hivemap` shell command too, clone the repo and link it:
+That gives you `/hivemap:map` (run `/reload-plugins` if Claude Code was already open). That's all most people need.
+
+Optionally, for a `hivemap` command in your shell too, clone the repo and link it into a folder on your `PATH`:
 
 ```sh
 git clone https://github.com/andreas131989/hivemap ~/.local/share/hivemap
-ln -s ~/.local/share/hivemap/bin/hivemap ~/.local/bin/hivemap
-# fish completions, optional:
-ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/hivemap.fish
+mkdir -p ~/.local/bin && ln -s ~/.local/share/hivemap/bin/hivemap ~/.local/bin/hivemap
 ```
+
+`~/.local/bin` is on the `PATH` on most Linux systems but not on macOS; there, add it once with
+`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc` and open a new terminal. For fish completions:
+`ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/`.
 
 ## Use
 
@@ -86,11 +90,15 @@ ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/hivema
 | `/hivemap:map status` | `hivemap status` | Say whether the server is running |
 | `/hivemap:map stop` | `hivemap stop` | Stop the server |
 
+The server keeps running in the background after you close the map (it uses well under 1% of a CPU core), so
+notifications keep coming and the map opens instantly next time. `stop` ends it.
+
 **Web map:** drag to pan, scroll or `+` / `-` to zoom, click a node for details. Dragging a node pins it;
 double-click it to let go. Click a tool call, as a node or as a row in the side panel, to see its full input
 and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera fitted to the map;
-`5m` / `15m` / `1h` sets how much history is shown; **Done** hides subagents that have finished;
-`Esc` closes the side panel.
+`5m` / `15m` / `1h` sets how much history is shown; **Done** hides subagents that have finished.
+Drag the side panel's left edge to resize it (double-click the edge to reset), or use its **⇤** button to widen it;
+`Esc` closes it.
 
 **Terminal view:**
 
@@ -112,7 +120,25 @@ scroll with the wheel.
 top in both views and shows why ("waiting: permission prompt"), and the web map's window title shows the count.
 
 **Notifications:** you get a desktop notification when a session starts waiting on you, and when one finishes
-a turn that took longer than 30 seconds. Set `HIVEMAP_NOTIFY=0` to turn them off.
+a turn that took longer than 30 seconds. To turn them off, set `HIVEMAP_NOTIFY=0` in the environment the server
+starts from (your shell profile, before starting Claude Code) and restart it with `stop` then `start`.
+
+On **macOS** the notifications come from `osascript`, so macOS lists them under **Script Editor**. If none show
+up, allow notifications for Script Editor in System Settings → Notifications. On **Linux** they need
+`notify-send` (package `libnotify-bin` on Debian and Ubuntu, `libnotify` elsewhere).
+
+## Uninstall
+
+```sh
+claude plugin uninstall hivemap@hivemap
+claude plugin marketplace remove hivemap
+```
+
+Run `/hivemap:map stop` first if the server is running. hivemap writes one file of its own: its log,
+`~/.local/state/hivemap.log` (or under `$XDG_STATE_HOME`); delete it if you like. The web map also remembers two
+display settings (time window, panel width) in your browser's storage for `127.0.0.1`. It never changes anything
+under `~/.claude` or your Claude Code settings. If you cloned the repo for the shell command, remove that
+folder and the `~/.local/bin/hivemap` link too.
 
 ## How it works
 
