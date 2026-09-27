@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ccmap",
+  "description": "Live map of your Claude Code sessions",
+  "owner": { "name": "Andreas Krivas" },
+  "plugins": [
+    {
+      "name": "ccmap",
+      "description": "Live, interactive map of running Claude Code sessions, agents, tool calls and files.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

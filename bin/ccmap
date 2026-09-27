@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# ccmap — live map of your Claude Code sessions.
+#   ccmap          start the server if needed and open the map window
+#   ccmap tui      show the map in this terminal
+#   ccmap pane     show it in a new herdr pane beside this one
+#   ccmap serve    start the server only
+#   ccmap status   say whether it is running
+#   ccmap stop     stop the server
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PORT="${CCMAP_PORT:-7777}"
+URL="http://127.0.0.1:$PORT"
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/ccmap.log"
+
+up() { curl -fs -o /dev/null --max-time 1 "$URL/api/state"; }
+
+case "${1:-open}" in
+  status) up && echo "ccmap is running at $URL" || echo "ccmap is not running"; exit 0 ;;
+  stop)   pkill -f 'ccmap.*/server/overlay\.py' && echo "ccmap stopped" || echo "ccmap was not running"; exit 0 ;;
+  pane)
+    [ -n "${HERDR_PANE_ID:-}" ] || { echo "ccmap: not inside herdr, run 'ccmap tui' instead" >&2; exit 1; }
+    pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
+      && herdr pane run "$pane" "$ROOT/bin/ccmap tui" >/dev/null \
+      && echo "ccmap: map open in herdr pane $pane" || { echo "ccmap: could not open a herdr pane" >&2; exit 1; }
+    exit 0 ;;
+  open|serve|tui) ;;
+  *) echo "usage: ccmap [open|tui|pane|serve|status|stop]" >&2; exit 2 ;;
+esac
+
+if ! up; then
+  mkdir -p "$(dirname "$LOG")"
+  PORT="$PORT" setsid -f python3 "$ROOT/server/overlay.py" >"$LOG" 2>&1 </dev/null
+  for _ in $(seq 30); do up && break; sleep 0.1; done
+  up || { echo "ccmap: server did not start, see $LOG" >&2; exit 1; }
+fi
+
+[ "${1:-open}" = tui ] && exec python3 "$ROOT/server/tui.py"   # server runs too, so selection syncs with the web map
+
+if [ "${1:-open}" = open ]; then
+  for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+    if command -v "$b" >/dev/null; then
+      setsid -f "$b" --app="$URL" --window-size=1100,760 >/dev/null 2>&1 </dev/null
+      echo "ccmap: map open at $URL"
+      exit 0
+    fi
+  done
+  setsid -f xdg-open "$URL" >/dev/null 2>&1 </dev/null
+fi
+echo "ccmap: map at $URL"
