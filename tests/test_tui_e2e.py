@@ -79,22 +79,27 @@ class Fixture:
 class PlainTerminalTest(unittest.TestCase):
     """A bare pseudo-terminal: no multiplexer, no herdr, nothing but the tty."""
 
+    @staticmethod
+    def spawn(env, rows=24, cols=100):
+        """The view on a fresh pseudo-terminal. subprocess, not pty.fork(): forking a threaded test process can deadlock."""
+        fd, tty = pty.openpty()
+        fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
+        proc = subprocess.Popen([sys.executable, TUI], stdin=tty, stdout=tty, stderr=tty, env=env, start_new_session=True)
+        return proc, fd, tty
+
     def run_tui(self, keys, rows=24, cols=100):
         with Fixture() as fx:
-            pid, fd = pty.fork()
-            if pid == 0:   # child: becomes the terminal view
-                os.execve(sys.executable, [sys.executable, TUI], fx.env)
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
-            before = termios.tcgetattr(fd)
+            proc, fd, tty = self.spawn(fx.env, rows, cols)
+            before = termios.tcgetattr(tty)
             out = self.read(fd, 1.5)
             for k in keys:
                 os.write(fd, k)
                 out += self.read(fd, 0.4)
             os.write(fd, b'q')
             out += self.read(fd, 1.0)
-            _, status = os.waitpid(pid, 0)
-            after = termios.tcgetattr(fd)
-            os.close(fd)
+            status = proc.wait(timeout=10)
+            after = termios.tcgetattr(tty)
+            os.close(fd), os.close(tty)
         return out, status, before, after
 
     @staticmethod
@@ -112,7 +117,7 @@ class PlainTerminalTest(unittest.TestCase):
         # into a call and back out, page, then from the tree: hide done, fold, try to jump
         out, status, before, after = self.run_tui([b'j', b'j', b'\t', b'\r', b'\x1b[D', b'\x1b[6~', b'\x1b[D',
                                                    b'd', b' ', b'\r'])
-        self.assertTrue(os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0, f'status {status}\n{out[-400:]!r}')
+        self.assertEqual(status, 0, out[-400:])
         text = ANSI.sub(b'', out).decode('utf-8', 'replace')
         for name in ('asking', 'busy', 'idle', 'waiting: permission prompt', 'no herdr or tmux pane'):
             self.assertIn(name, text)
@@ -134,18 +139,15 @@ class PlainTerminalTest(unittest.TestCase):
 
     def test_ctrl_c_also_restores_the_terminal(self):
         with Fixture() as fx:
-            pid, fd = pty.fork()
-            if pid == 0:
-                os.execve(sys.executable, [sys.executable, TUI], fx.env)
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 100, 0, 0))
-            before = termios.tcgetattr(fd)
-            out = PlainTerminalTest.read(fd, 1.5)
-            os.kill(pid, signal.SIGINT)
-            out += PlainTerminalTest.read(fd, 1.0)
-            _, status = os.waitpid(pid, 0)
-            after = termios.tcgetattr(fd)
-            os.close(fd)
-        self.assertEqual(os.WEXITSTATUS(status), 0, out[-300:])
+            proc, fd, tty = self.spawn(fx.env)
+            before = termios.tcgetattr(tty)
+            out = self.read(fd, 1.5)
+            proc.send_signal(signal.SIGINT)
+            out += self.read(fd, 1.0)
+            status = proc.wait(timeout=10)
+            after = termios.tcgetattr(tty)
+            os.close(fd), os.close(tty)
+        self.assertEqual(status, 0, out[-300:])
         self.assertIn(b'\x1b[?1049l', out[-200:])
         self.assertEqual(after[3] & (termios.ECHO | termios.ICANON), before[3] & (termios.ECHO | termios.ICANON))
 
