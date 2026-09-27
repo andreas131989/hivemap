@@ -13,7 +13,7 @@ Reads Claude Code's own files in `~/.claude` (sessions and transcripts); serves 
   Mouse: click selects, click a call to open it, click a selected session to fold, wheel scrolls.
 - In the web map, click any tool call (a node, or a row in the side panel) to see its full input and output.
 - Sessions waiting on you (a permission prompt or question) turn yellow and sort first, in both views and the
-  window title. This comes from herdr's `blocked` state; `herdr integration install claude` makes it reliable.
+  window title. This comes from herdr's `blocked` state (herdr reads it off the pane; no hook needed).
 - Selection is shared: pick a session, agent or call in either view and the other follows (needs the server, which `ccmap tui` starts).
 - In the map, click a session and use **Jump to terminal pane** to focus its herdr pane.
 
