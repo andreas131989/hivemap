@@ -21,12 +21,13 @@ sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthr
 
 ## Requirements
 
-- Linux (the launcher uses `setsid` and Linux browser names; macOS is not supported yet)
+- Linux or macOS (developed on Linux; the macOS paths are written but not yet tested on a Mac, reports welcome)
 - Python 3.9 or newer, standard library only
 - `bash`, `curl` and `pkill` (standard on most distributions)
 - Chrome, Chromium, Brave or Edge for the web map window (anything else opens in your default browser)
 - Optional: [herdr](https://herdr.dev), the terminal workspace manager. With it, hivemap can
-  jump to a session's pane and show which sessions are waiting on you.
+  jump to a session's pane, show which sessions are waiting on you, and notify you when one starts waiting.
+- Optional: `notify-send` (Linux) for those notifications; macOS has them built in.
 
 ## Install
 
@@ -60,7 +61,8 @@ ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/hivema
 **Web map:** drag to pan, scroll or `+` / `-` to zoom, click a node for details. Dragging a node pins it;
 double-click it to let go. Click a tool call, as a node or as a row in the side panel, to see its full input
 and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera fitted to the map;
-`5m` / `15m` / `1h` sets how much history is shown; `Esc` closes the side panel.
+`5m` / `15m` / `1h` sets how much history is shown; **Done** hides subagents that have finished;
+`Esc` closes the side panel.
 
 **Terminal view:**
 
@@ -72,13 +74,15 @@ and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera
 | `tab` | Move into the call list: `↑` `↓` pick a call, `enter` or `→` opens its input and output, `←`, `tab` or backspace goes back |
 | `pgup` `pgdn` | Scroll |
 | `f` | Follow the top session (waiting first, then busy) and its most recently active agent |
+| `d` | Hide or show subagents that have finished |
 | `q` | Quit |
 
 The mouse works too: click a row or a call to select or open it, click a selected session to fold it, and
 scroll with the wheel.
 
 **Waiting on you:** when herdr reports a session as blocked (a permission prompt or a question), it turns
-yellow and moves to the top in both views, and the web map's window title shows the count.
+yellow and moves to the top in both views, the web map's window title shows the count, and you get a desktop
+notification each time a session starts waiting (set `HIVEMAP_NOTIFY=0` to turn that off).
 
 ## How it works
 

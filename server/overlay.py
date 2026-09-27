@@ -328,6 +328,36 @@ def live_pids():
     return pids
 
 
+def notify(text):
+    """Desktop notification: notify-send on Linux, osascript on macOS; silently nothing elsewhere."""
+    if shutil.which('notify-send'):
+        cmd = ['notify-send', '--app-name=hivemap', 'hivemap', text]
+    elif shutil.which('osascript'):
+        cmd = ['osascript', '-e', f'display notification {json.dumps(text)} with title "hivemap"']
+    else:
+        return
+    subprocess.run(cmd, capture_output=True, timeout=5)
+
+
+def new_waits(sessions, before):
+    """(ids waiting now, names of sessions that started waiting since `before`)."""
+    now = {j['id']: j['name'] for j in sessions if j['status'] == 'waiting'}
+    return set(now), [now[i] for i in now.keys() - before]
+
+
+def watch_waiting(every=2):
+    """Notify once each time a session starts waiting on the user."""
+    waiting = set()
+    while True:
+        try:
+            waiting, started = new_waits(state()['sessions'], waiting)
+            for name in started:
+                notify(f'{name} is waiting on you')
+        except Exception as err:   # never let the watcher die; the log says why it hiccuped
+            print(f'watch_waiting: {err!r}', flush=True)
+        time.sleep(every)
+
+
 class Handler(BaseHTTPRequestHandler):
     timeout = 10   # a client that stalls mid-request gives up its thread
 
@@ -406,4 +436,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     print(f'hivemap on http://127.0.0.1:{PORT}', flush=True)
+    if HERDR and os.environ.get('HIVEMAP_NOTIFY', '1') != '0':   # waiting is only known through herdr
+        threading.Thread(target=watch_waiting, daemon=True).start()
     ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()

@@ -77,6 +77,19 @@ def main():
     assert (keys, rest) == (['j'], '\x1b[<65;30;1')
     assert split_keys(rest + '0M') == (['\x1b[<65;30;10M'], '')
     assert split_keys('\x1b[A\x1bO') == (['\x1b[A'], '\x1bO')
+    # one notification per wait: when it starts, not while it lasts
+    seen, told = set(), []
+    for status in ('idle', 'waiting', 'waiting', 'busy', 'waiting'):
+        seen, started = overlay.new_waits([{'id': 's1', 'name': 'proj', 'status': status}], seen)
+        told += started
+    assert told == ['proj', 'proj'], told
+
+    # 'hide finished' drops done subagents but keeps the session and its main agent
+    agent = lambda aid, parent, running: {'id': aid, 'parent': parent, 'running': running}
+    st = {'sessions': [{'id': 's', 'agents': [agent('main', None, False), agent('x', 'main', True), agent('y', 'main', False)]}]}
+    from tui import rows
+    assert [r[0] for r in rows(st, set(), hide_done=True)] == [('s', None), ('s', 'main'), ('s', 'x')]
+    assert len(rows(st, set())) == 4
     print('ok')
 
 
