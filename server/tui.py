@@ -169,7 +169,7 @@ def main():
     sys.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h')
     sel, idx, top, scroll, closed, follow, msg, fetched = None, 0, 0, 0, set(), False, '', 0
     focus, cur, opened, dscroll, start, head_n = 'tree', None, None, 0, 0, 0
-    seen_v, sent, adopt, pending, hide_done = 0, None, True, '', False
+    seen_v, sent, adopt, pending, hide_done, queue = 0, None, True, '', False, []
     try:
         while True:
             if time.time() - fetched >= 1:
@@ -235,11 +235,17 @@ def main():
             sys.stdout.write('\x1b[H' + '\r\n'.join(screen) + f'\r\n\x1b[2m{foot[:w - 1]}\x1b[0m\x1b[K')
             sys.stdout.flush()
 
-            if not select.select([fd], [], [], max(0.05, 1 - (time.time() - fetched)))[0]:
-                continue
+            if not queue:
+                if not select.select([fd], [], [], max(0.05, 1 - (time.time() - fetched)))[0]:
+                    continue
+                keys_in, pending = split_keys(pending + os.read(fd, 256).decode(errors='ignore'))
+                queue.extend(keys_in)
+                if not queue:
+                    continue
             msg = ''
-            keys_in, pending = split_keys(pending + os.read(fd, 256).decode(errors='ignore'))
-            for k in keys_in:
+            # one key per pass: each key sees the rows, calls and focus the previous key left behind
+            # (fast typing, key repeat and paste deliver several keys in a single read)
+            for k in [queue.pop(0)]:
                 row = rs[idx] if rs else None
                 m = MOUSE.match(k)
                 if k == 'q':

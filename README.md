@@ -97,7 +97,7 @@ directly and syncs its selection through the server. No dependencies beyond the 
 ## Develop
 
 ```sh
-python3 -m unittest -v   # the whole suite: parser, state, server, terminal view, page, launcher
+python3 -m unittest -v   # parser, state, server, terminal view (incl. end to end in a real pty), page, launcher
 ```
 
 The tests use a throwaway `~/.claude` and a random port, so they never touch your real sessions or a
