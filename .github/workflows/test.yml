@@ -28,14 +28,6 @@ jobs:
       - name: Shell lint
         if: runner.os == 'Linux'
         run: shellcheck bin/hivemap
-
-  # One stable name for branch protection to require, whatever the matrix becomes.
-  ok:
-    needs: test
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - run: test "${{ needs.test.result }}" = success
       - name: Debug launcher start (temporary)
         if: runner.os == 'macOS'
         run: |
@@ -46,3 +38,11 @@ jobs:
           echo "--- log"; cat ~/.local/state/hivemap.log || true
           echo "--- procs"; ps -axo pid,ppid,command | grep -i "hivemap\|overlay\|curl" | grep -v grep || true
           echo "--- curl"; curl -sv --max-time 3 http://127.0.0.1:7801/api/select 2>&1 | tail -15 || true
+
+  # One stable name for branch protection to require, whatever the matrix becomes.
+  ok:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - run: test "${{ needs.test.result }}" = success
