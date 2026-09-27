@@ -12,7 +12,7 @@ jobs:
   test:
     name: ${{ matrix.os }} · python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 3   # hard cap: a whole job over 3 minutes is a failure, never a wait
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +32,7 @@ jobs:
         run: shellcheck bin/hivemap
       - name: Open the map for real (macOS)
         if: runner.os == 'macOS'
-        timeout-minutes: 3
+        timeout-minutes: 1
         env:
           HIVEMAP_PORT: '7801'
         run: |
@@ -51,14 +51,14 @@ jobs:
           sleep 2
           bin/hivemap   # the server is up, so this only opens the window, exactly as for a user
           pgrep -fl -- "--app=http://127.0.0.1:7801"   # an app window, not a tab
-          for _ in $(seq 60); do grep -q "GET /api/state .*Chrome" requests.log && break; sleep 0.5; done
+          for _ in $(seq 40); do grep -q "GET /api/state .*Chrome" requests.log && break; sleep 0.5; done   # up to 20s
           grep -m3 "Chrome" requests.log
           grep -q "GET /api/state .*Chrome" requests.log   # Chrome loaded the map and is polling it
           pkill -f -- "--app=http://127.0.0.1:7801" || true
           kill %1 || true
       - name: Desktop notification command (macOS)
         if: runner.os == 'macOS'
-        timeout-minutes: 2
+        timeout-minutes: 1
         run: |
           python - <<'PY'
           import subprocess, sys

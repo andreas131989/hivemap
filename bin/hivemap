@@ -60,12 +60,13 @@ if [ "${1:-open}" = open ]; then
   if [ "$(uname)" = Darwin ]; then
     for app in "Google Chrome" "Chromium" "Brave Browser" "Microsoft Edge"; do
       if [ -d "/Applications/$app.app" ]; then
-        open -na "$app" --args --app="$URL" --window-size=1100,760
+        # in the background: open can block when there is no desktop session (SSH, CI), and the command must return
+        detach open -na "$app" --args --app="$URL" --window-size=1100,760 >/dev/null 2>&1 </dev/null
         echo "hivemap: map open at $URL"
         exit 0
       fi
     done
-    open "$URL"
+    detach open "$URL" >/dev/null 2>&1 </dev/null
   else
     for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
       if command -v "$b" >/dev/null; then
