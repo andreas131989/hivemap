@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Claude Code · Map</title>
+<title>hivemap</title>
 <style>
 :root{
   --bg:#0B0D10; --panel:rgba(20,23,28,.92); --line:#262B32; --ink:#E7E9EC; --muted:#8A919B; --faint:#5A616B; --accent:#D97757; --err:#FF5D5D; --wait:#FFE066;
@@ -83,7 +83,7 @@ pre.io{margin:0;font:11.5px/1.5 var(--mono);color:#C9CDD3;background:#101317;bor
 <canvas id="map" aria-label="Live map of Claude Code sessions, agents, tool calls and files"></canvas>
 <div class="empty" id="empty" hidden><div><b>No Claude Code sessions running</b>Start <code>claude</code> in a terminal and it lands on the map.</div></div>
 
-<div class="hud"><div class="logo"><span class="beacon"></span>Claude Code · map</div><div class="stats" id="stats">Connecting…</div></div>
+<div class="hud"><div class="logo"><span class="beacon"></span>hivemap</div><div class="stats" id="stats">Connecting…</div></div>
 
 <div class="tools">
   <div class="seg" role="group" aria-label="Show on map">
@@ -584,7 +584,7 @@ async function poll(){
     }
     const list = data.sessions;
     const busy = list.filter(s => s.status === 'busy').length, waiting = list.filter(s => s.status === 'waiting').length;
-    document.title = waiting ? `(${waiting}) waiting · Claude Code · Map` : 'Claude Code · Map';
+    document.title = waiting ? `(${waiting}) waiting · hivemap` : 'hivemap';
     const subs = list.reduce((n, s) => n + s.agents.filter(a => a.id !== 'main' && a.running).length, 0);
     const running = [...nodes.values()].filter(n => n.kind === 'tool' && n.active).length;
     $('#stats').innerHTML = `<b>${list.length}</b> session${list.length === 1 ? '' : 's'} · ${waiting ? `<b style="color:var(--wait)">${waiting}</b> waiting on you · ` : ''}<b>${busy}</b> working · <b>${subs}</b> subagent${subs === 1 ? '' : 's'} · <b>${running}</b> call${running === 1 ? '' : 's'} running`;

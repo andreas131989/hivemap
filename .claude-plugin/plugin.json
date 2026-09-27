@@ -1,6 +1,11 @@
 {
   "name": "hivemap",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Live, interactive map of your running Claude Code sessions, subagents, tool calls and the files they touch. Jumps to the session's herdr pane.",
-  "author": { "name": "Andreas Krivas" }
+  "author": {
+    "name": "Andreas Krivas"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/andreas131989/hivemap",
+  "homepage": "https://github.com/andreas131989/hivemap"
 }
