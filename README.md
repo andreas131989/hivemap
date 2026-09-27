@@ -5,7 +5,7 @@
 A live map of your running [Claude Code](https://claude.com/claude-code) sessions: their subagents, the tool
 calls they're making, the files they touch, and which ones are waiting on you.
 
-![hivemap: a session with four subagents fanned out around it, each with its tool calls and the files they read or edited](docs/map.png)
+![hivemap: three sessions. checkout-api is yellow, waiting on you; web-app has three subagents at work, each with its tool calls and the files it touched](docs/map.png)
 
 Two views of the same data, kept in sync:
 
@@ -16,14 +16,40 @@ Two views of the same data, kept in sync:
 
 Select something in one view and the other follows.
 
-![Clicking a tool call shows its full input and output](docs/call.png)
+When a session stops for you, it turns yellow and says why, you get a desktop notification, and one click (or
+`enter` in the terminal view) takes you to its tmux or herdr pane:
+
+![The waiting session selected: "Waiting on you: permission prompt", a Jump to terminal pane button, and its calls, the newest still pending](docs/waiting.png)
+
+The same, in the terminal view:
+
+```
+▾ 1 ! checkout-api  84k              │checkout-api  waiting: permission prompt · opus-5-5 · 84k ctx · pid 378235
+  main  Bash                         │/home/dev/code/checkout-api
+▾ 2 ● web-app  84k                   │Add retries to the payment webhook
+  main  Agent                        │──────────────────────────────────────────────────────────────────────────
+    └ Accessibility audit  Grep      │20:35:41 Prompt   the stripe webhook drops events when the db is slow, add
+    └ Fix snapshot tests  Bash       │20:35:51 Read     stripe.py  1s
+    └ Convert settings forms  Edit   │20:36:01 Grep     def handle_event  1s
+▾ 3 ○ docs  84k                      │20:36:21 Edit     stripe.py  1s
+  main  Edit                         │20:36:41 Write    retry.py  1s
+                                     │20:37:11 Bash     Run the webhook tests  12s
+                                     │20:42:01 Bash     Push the branch  3m
+                                     │
+                                     │
+↑↓ select · ←→ fold · enter jump · tab calls · f follow · d hide done · q quit
+```
+
+Click any tool call to see exactly what it did:
+
+![A Bash call opened: its command and full output, 26 passed in 11.84s](docs/call.png)
 
 hivemap only reads the files Claude Code already writes under `~/.claude` (session list and transcripts). It
 sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthropic.
 
 ## Requirements
 
-- Linux or macOS (developed on Linux; the macOS paths are written but not yet tested on a Mac, reports welcome)
+- Linux or macOS (CI runs the whole suite on both; opening the browser window on macOS is the one step no test covers yet, reports welcome)
 - Python 3.9 or newer, standard library only
 - `bash`, `curl` and `pkill` (standard on most distributions)
 - Chrome, Chromium, Brave or Edge for the web map window (anything else opens in your default browser)
