@@ -91,9 +91,8 @@ def rows(st, closed):
 def row_line(r, n, closed, width, sel):
     _, s, a, d = r
     if a is None:
-        busy = s['status'] == 'busy'
-        return fit([('', f"{'▸' if s['id'] in closed else '▾'} {n if n < 10 else ' '}"),
-                    ('1;32' if busy else '2', ' ● ' if busy else ' ○ '), ('1', s['name']),
+        mark = {'waiting': ('1;33', ' ! '), 'busy': ('1;32', ' ● ')}.get(s['status'], ('2', ' ○ '))
+        return fit([('', f"{'▸' if s['id'] in closed else '▾'} {n if n < 10 else ' '}"), mark, ('1', s['name']),
                     ('2', f"  {s['ctx'] // 1000}k")], width, sel)
     last = a['events'][-1]['n'] if a['events'] else ''
     return fit([('', '  ' * d + ('└ ' if a['parent'] else '')), ('1;34' if a['running'] else '', a['label']),

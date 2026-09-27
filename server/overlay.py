@@ -227,7 +227,11 @@ def state(full=False):
                 j = session_json(s, now, full)
                 if j:
                     out.append(j)
-    out.sort(key=lambda j: (j['status'] != 'busy', -j['updated']))
+    herdr_st = herdr_status([j['pid'] for j in out])
+    for j in out:
+        if herdr_st.get(j['pid']) == 'blocked':
+            j['status'] = 'waiting'
+    out.sort(key=lambda j: ({'waiting': 0, 'busy': 1}.get(j['status'], 2), -j['updated']))
     return {'now': now, 'herdr': HERDR is not None, 'sessions': out}
 
 
@@ -260,16 +264,47 @@ def herdr(*args):
     return json.loads(r.stdout or '{}').get('result', {})
 
 
-def herdr_focus(pid):
-    """Focus the herdr pane whose foreground process is this Claude Code pid. Returns the pane id or None."""
-    for agent in herdr('agent', 'list').get('agents', []):
-        if agent.get('agent') != 'claude':
-            continue
-        info = herdr('pane', 'process-info', '--pane', agent['pane_id']).get('process_info', {})
+panes = {}   # Claude Code pid -> (herdr pane id or None, the pane set it was looked up against)
+
+
+def claude_panes():
+    """{pane id: agent_status} for herdr panes running Claude Code."""
+    return {a['pane_id']: a.get('agent_status') for a in herdr('agent', 'list').get('agents', []) if a.get('agent') == 'claude'}
+
+
+def herdr_pane(pid, agents):
+    """The herdr pane whose foreground process is this Claude Code pid; asked of herdr only when the panes change."""
+    key = frozenset(agents)
+    hit = panes.get(pid)
+    if hit and (hit[0] in agents or hit[1] == key):
+        return hit[0] if hit[0] in agents else None
+    found = None
+    for pane in agents:
+        info = herdr('pane', 'process-info', '--pane', pane).get('process_info', {})
         if pid == info.get('foreground_process_group_id') or any(p.get('pid') == pid for p in info.get('foreground_processes', [])):
-            subprocess.run([HERDR, 'agent', 'focus', agent['pane_id']], capture_output=True, timeout=5, check=True)
-            return agent['pane_id']
-    return None
+            found = pane
+            break
+    panes[pid] = (found, key)
+    return found
+
+
+def herdr_status(pids):
+    """{pid: herdr agent_status}; 'blocked' means Claude Code is waiting on the user."""
+    if not HERDR:
+        return {}
+    try:
+        agents = claude_panes()
+        return {pid: agents[pane] for pid in pids if (pane := herdr_pane(pid, agents))}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+
+
+def herdr_focus(pid):
+    """Focus the herdr pane running this Claude Code pid. Returns the pane id or None."""
+    pane = herdr_pane(pid, claude_panes())
+    if pane:
+        subprocess.run([HERDR, 'agent', 'focus', pane], capture_output=True, timeout=5, check=True)
+    return pane
 
 
 def live_pids():

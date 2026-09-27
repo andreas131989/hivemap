@@ -6,7 +6,7 @@
 <title>Claude Code · Map</title>
 <style>
 :root{
-  --bg:#0B0D10; --panel:rgba(20,23,28,.92); --line:#262B32; --ink:#E7E9EC; --muted:#8A919B; --faint:#5A616B; --accent:#D97757; --err:#FF5D5D;
+  --bg:#0B0D10; --panel:rgba(20,23,28,.92); --line:#262B32; --ink:#E7E9EC; --muted:#8A919B; --faint:#5A616B; --accent:#D97757; --err:#FF5D5D; --wait:#FFE066;
   --c-read:#6CA8FF; --c-write:#F2B84B; --c-exec:#5FD39A; --c-agent:#B48CFF; --c-web:#4FD1E8; --c-mcp:#FF7AB6; --c-other:#A3AAB4;
   --mono:ui-monospace,"JetBrains Mono","Cascadia Code","SFMono-Regular",Menlo,monospace;
   color-scheme:dark;
@@ -105,7 +105,7 @@ const CATS = {read:'Read', write:'Edit', exec:'Shell', agent:'Agent', web:'Web',
 const $ = s => document.querySelector(s);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const COL = Object.fromEntries(Object.keys(CATS).map(k => [k, css(`--c-${k}`)]));
-const ACCENT = css('--accent'), MUTED = css('--muted'), FAINT = css('--faint'), INK = css('--ink'), ERR = css('--err');
+const WAIT = css('--wait'), ACCENT = css('--accent'), MUTED = css('--muted'), FAINT = css('--faint'), INK = css('--ink'), ERR = css('--err');
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cut = (s, n) => (s = String(s ?? '')).length > n ? s.slice(0, n - 1) + '…' : s;
 const ago = s => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s/60)}m` : `${(s/3600).toFixed(1)}h`;
@@ -148,7 +148,7 @@ function sync(){
   const E = [], files = new Map();
   for (const s of data.sessions){
     const sid = `s:${s.id}`;
-    const sn = upsert(sid, 'session', {s, label:s.name, active:s.status === 'busy'}, null);
+    const sn = upsert(sid, 'session', {s, label:s.name, active:s.status !== 'idle', waiting:s.status === 'waiting'}, null);
     const agentNode = {main: sn};
     for (const a of s.agents) if (a.id !== 'main'){
       const parent = agentNode[a.parent] || sn;
@@ -251,7 +251,7 @@ function setFollow(v){ follow = v; $('#fit').setAttribute('aria-pressed', String
 /* ---------- drawing ---------- */
 let hover = null, selected = null;
 function nodeColor(n){
-  if (n.kind === 'session') return n.active ? ACCENT : MUTED;
+  if (n.kind === 'session') return n.waiting ? WAIT : n.active ? ACCENT : MUTED;
   if (n.kind === 'agent') return n.active ? COL.agent : MUTED;
   if (n.kind === 'tool') return n.e.err ? ERR : COL[n.e.c];
   return n.write ? COL.write : COL.read;
@@ -566,7 +566,7 @@ $('#inspector').addEventListener('click', e => {
 });
 
 /* ---------- data ---------- */
-$('#legend').innerHTML = `<span><i style="background:${ACCENT}"></i>Session</span><span><i style="background:${COL.agent}"></i>Subagent</span>`
+$('#legend').innerHTML = `<span><i style="background:${ACCENT}"></i>Session</span><span><i style="background:${WAIT}"></i>Waiting on you</span><span><i style="background:${COL.agent}"></i>Subagent</span>`
   + Object.entries(CATS).filter(([k]) => k !== 'agent').map(([k, v]) => `<span><i style="background:${COL[k]}"></i>${v}</span>`).join('')
   + `<span><i class="sq" style="border:1.5px solid ${COL.read}"></i>File</span><span class="hint">Drag to pan · scroll to zoom · click for details · double-click to fit</span>`;
 
@@ -583,10 +583,11 @@ async function poll(){
       if (sel.by !== ME && sel.id && sel.id !== selected && find(sel.id)) select(sel.id, true);
     }
     const list = data.sessions;
-    const busy = list.filter(s => s.status === 'busy').length;
+    const busy = list.filter(s => s.status === 'busy').length, waiting = list.filter(s => s.status === 'waiting').length;
+    document.title = waiting ? `(${waiting}) waiting · Claude Code · Map` : 'Claude Code · Map';
     const subs = list.reduce((n, s) => n + s.agents.filter(a => a.id !== 'main' && a.running).length, 0);
     const running = [...nodes.values()].filter(n => n.kind === 'tool' && n.active).length;
-    $('#stats').innerHTML = `<b>${list.length}</b> session${list.length === 1 ? '' : 's'} · <b>${busy}</b> working · <b>${subs}</b> subagent${subs === 1 ? '' : 's'} · <b>${running}</b> call${running === 1 ? '' : 's'} running`;
+    $('#stats').innerHTML = `<b>${list.length}</b> session${list.length === 1 ? '' : 's'} · ${waiting ? `<b style="color:var(--wait)">${waiting}</b> waiting on you · ` : ''}<b>${busy}</b> working · <b>${subs}</b> subagent${subs === 1 ? '' : 's'} · <b>${running}</b> call${running === 1 ? '' : 's'} running`;
     $('#empty').hidden = list.length > 0;
     if (selected) renderInspector();
   } catch {
