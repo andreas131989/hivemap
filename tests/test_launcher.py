@@ -80,6 +80,40 @@ class LauncherTest(unittest.TestCase):
         finally:
             subprocess.run([LAUNCHER, 'stop'], env=other, capture_output=True, timeout=30)
 
+    def test_install_path_with_a_space(self):
+        # e.g. a macOS home like /Users/Jane Doe: start, status and stop must all still work
+        spaced = Path(self.home.name) / 'my apps' / 'hivemap'
+        shutil.copytree(ROOT / 'bin', spaced / 'bin')
+        shutil.copytree(ROOT / 'server', spaced / 'server')
+        run = lambda *a: subprocess.run([str(spaced / 'bin' / 'hivemap'), *a], env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(run('start').returncode, 0)
+        self.assertIn('is running', run('status').stdout)
+        self.assertIn('stopped', run('stop').stdout)
+        self.assertIn('not running', run('status').stdout)
+
+    def test_something_else_on_the_port_is_not_mistaken_for_hivemap(self):
+        import http.server
+        import threading
+        class AnythingGoes(http.server.BaseHTTPRequestHandler):   # another app that answers 200 to every path
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'<html>some other app</html>')
+
+            def log_message(self, *a):
+                pass
+
+        other = http.server.HTTPServer(('127.0.0.1', self.port), AnythingGoes)
+        threading.Thread(target=other.serve_forever, daemon=True).start()
+        try:
+            self.assertIn('not running', self.run_launcher('status').stdout)
+            r = self.run_launcher('start')
+            self.assertNotEqual(r.returncode, 0, 'the port is taken, so hivemap cannot start there')
+            self.assertIn('did not start', r.stderr)
+        finally:
+            other.shutdown()
+            other.server_close()
+
     def test_unknown_command(self):
         r = self.run_launcher('launch')
         self.assertEqual(r.returncode, 2)

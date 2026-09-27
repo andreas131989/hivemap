@@ -80,6 +80,13 @@ class ServerTest(unittest.TestCase):
             r, _ = self.request('POST', '/api/select', None, {'Content-Type': 'application/json', 'Content-Length': length})
             self.assertEqual(r.status, 400, length)
 
+    def test_deeply_nested_json_is_a_bad_request(self):
+        r, _ = self.request('POST', '/api/select', b'[' * 1500 + b']' * 1500, {'Content-Type': 'application/json'})
+        self.assertEqual(r.status, 400)
+
+    def test_non_ascii_path_and_ids(self):
+        self.assertEqual(self.request('GET', '/api/call?id=' + quote('t:会话:main:1:é'))[0].status, 404)
+
     def test_call_details(self):
         self.request('GET', '/api/state')   # the server learns transcripts by polling state
         (e,) = overlay.state()['sessions'][0]['agents'][0]['events']

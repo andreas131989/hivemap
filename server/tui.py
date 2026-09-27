@@ -16,6 +16,7 @@ import sys
 import termios
 import time
 import tty
+import unicodedata
 import urllib.request
 
 import overlay
@@ -56,12 +57,35 @@ def split_keys(data):
     return KEY.findall(data[:len(data) - len(rest)]), rest
 
 
+def cells(ch):
+    """Terminal columns a character takes: 2 for wide (CJK, most emoji), 0 for combining marks, else 1."""
+    if unicodedata.category(ch) in ('Mn', 'Me', 'Cf'):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+
+
+def clip(text, cols):
+    """text cut to at most cols terminal columns. Returns (text, columns used)."""
+    if text.isascii():
+        text = text[:max(cols, 0)]
+        return text, len(text)
+    used, out = 0, []
+    for ch in text:
+        w = cells(ch)
+        if used + w > cols:
+            break
+        out.append(ch)
+        used += w
+    return ''.join(out), used
+
+
 def fit(parts, width, sel=False):
-    """parts: [(sgr, text)] -> one ANSI line cut and padded to width."""
-    out, left = [], width
+    """parts: [(sgr, text)] -> one ANSI line cut and padded to exactly width columns.
+    Text comes from files and tool output, so newlines and escape codes are stripped here, for every field."""
+    out, left = [], max(width, 0)
     for sgr, text in parts:
-        text = text[:left]
-        left -= len(text)
+        text, used = clip(UNSAFE.sub('', str(text)).replace('\n', ' '), left)
+        left -= used
         sgr = ';'.join(x for x in ('7' if sel else '', sgr) if x)
         out.append(f'\x1b[{sgr}m{text}\x1b[0m' if sgr else text)
     out.append(f"\x1b[{'7' if sel else ''}m{' ' * left}\x1b[0m")
@@ -69,9 +93,17 @@ def fit(parts, width, sel=False):
 
 
 def wrap(text, width):
-    out = []
+    """Lines of at most width columns (wide characters count double)."""
+    out, width = [], max(width, 1)
     for line in UNSAFE_BUT_TABS.sub('', text).expandtabs(4).split('\n'):   # tab stops count visible text only
-        out += [line[i:i + width] for i in range(0, max(len(line), 1), width)]
+        while True:
+            part, used = clip(line, width)
+            if not part and line:   # a character wider than the whole width: show it alone rather than loop
+                part = line[0]
+            out.append(part)
+            line = line[len(part):]
+            if not line:
+                break
     return out
 
 
@@ -126,7 +158,7 @@ def header(s, a, width):
     else:
         head = [[('1', a['label'])],
                 [('2', f"{a['type']} · {'running' if a['running'] else 'idle'} · {model(a['model'])} · {a['ctx'] // 1000}k ctx")]]
-    return head + [[('2', '─' * width)]]
+    return head + [[('2', '─' * max(width, 0))]]
 
 
 def calls(head, events, now, width, height, scroll, cur):
@@ -143,8 +175,9 @@ def calls(head, events, now, width, height, scroll, cur):
     return [fit(p, width) for p in head] + shown, scroll, start
 
 
-def call_detail(e, now, width, height, scroll):
-    state = 'running' if e['t1'] is None else 'error' if e['err'] else 'done'
+def call_detail(e, now, width, height, scroll, pending=False):
+    """pending: the call is waiting for the user's approval (an open call in a waiting session's main agent)."""
+    state = 'waiting for you' if pending else 'running' if e['t1'] is None else 'error' if e['err'] else 'done'
     head = [[(f"1;{COLOR[e['c']]}", e['n']),
              ('2', f"  {state} · {time.strftime('%H:%M:%S', time.localtime(e['t0']))} · {dur(e, now)}")],
             [('2', '─' * width)]]
@@ -154,7 +187,7 @@ def call_detail(e, now, width, height, scroll):
             continue
         body.append([('1;2', label)])
         text = e.get(key)
-        empty = 'still running…' if key == 'out' and e['t1'] is None else '(none)'
+        empty = ('not run yet: waiting for your approval' if pending else 'still running…') if key == 'out' and e['t1'] is None else '(none)'
         body += [[('31' if e['err'] and key == 'out' else '', line)] for line in wrap(text, width)] if text else [[('2', empty)]]
         body.append([])
     room = max(1, height - len(head))
@@ -163,13 +196,15 @@ def call_detail(e, now, width, height, scroll):
 
 
 def main():
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        sys.exit('hivemap tui needs a terminal; for the web map run: hivemap')
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     tty.setcbreak(fd)
     sys.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h')
     sel, idx, top, scroll, closed, follow, msg, fetched = None, 0, 0, 0, set(), False, '', 0
     focus, cur, opened, dscroll, start, head_n = 'tree', None, None, 0, 0, 0
-    seen_v, sent, adopt, pending, hide_done, queue = 0, None, True, '', False, []
+    seen_v, sent, adopt, pending, hide_done, queue, pending_t = 0, None, True, '', False, [], 0
     try:
         while True:
             if time.time() - fetched >= 1:
@@ -221,7 +256,8 @@ def main():
             if not rs:
                 right, head_n = [fit([('2', 'no running Claude Code sessions')], rw)], 0
             elif detail:
-                right, dscroll = call_detail(detail, st['now'], rw, body, dscroll)
+                awaiting = detail['t1'] is None and rs[idx][1]['status'] == 'waiting' and (rs[idx][2] or {'id': 'main'})['id'] == 'main'
+                right, dscroll = call_detail(detail, st['now'], rw, body, dscroll, awaiting)
             else:
                 head = header(rs[idx][1], rs[idx][2], rw)
                 head_n = len(head)
@@ -238,7 +274,13 @@ def main():
             if not queue:
                 if not select.select([fd], [], [], max(0.05, 1 - (time.time() - fetched)))[0]:
                     continue
-                keys_in, pending = split_keys(pending + os.read(fd, 256).decode(errors='ignore'))
+                data = os.read(fd, 256)
+                if not data:   # the terminal went away: stop instead of spinning on empty reads
+                    return
+                if pending and time.time() - pending_t > 0.05:   # a stale half sequence (Alt+[ …) must not eat the next key
+                    pending = ''
+                keys_in, pending = split_keys(pending + data.decode(errors='ignore'))
+                pending_t = time.time()
                 queue.extend(keys_in)
                 if not queue:
                     continue
@@ -305,7 +347,7 @@ def main():
                     follow = not follow
                 elif k == 'd':
                     hide_done = not hide_done
-                elif (k in ENTER and row) or (k.isdigit() and 0 < int(k) <= len(st['sessions'])):
+                elif (k in ENTER and row) or (k in '123456789' and int(k) <= len(st['sessions'])):
                     s = row[1] if k in ENTER else st['sessions'][int(k) - 1]
                     try:
                         msg = f"jumped to {s['name']}" if st['jump'] and overlay.focus(s['pid']) else f"no herdr or tmux pane for {s['name']}"

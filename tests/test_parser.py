@@ -67,6 +67,12 @@ class TailTest(unittest.TestCase):
         self.assertFalse(t.open)
         self.assertEqual(prompt['s'], 'real prompt')
 
+    def test_wrappers_are_skipped_but_prompts_starting_with_html_are_kept(self):
+        self.path.write_text(''.join(line(type='user', timestamp=f'2026-01-01T11:00:0{i}Z', message={'content': c}) for i, c in enumerate([
+            '<command-name>/clear</command-name>', '<local-command-stdout>ok</local-command-stdout>',
+            '<system-reminder>x</system-reminder>', '<div class="x"> why is this broken', '<b>bold</b> question'])))
+        self.assertEqual([e['s'] for e in overlay.Tail(self.path).poll().events], ['<div class="x"> why is this broken', '<b>bold</b> question'])
+
     def test_tool_result_with_extra_text_is_not_a_prompt(self):
         self.path.write_text(
             line(type='assistant', timestamp='2026-01-01T11:00:00Z', message={'content': [tool_use('a', 'Read', file_path='/f')]})

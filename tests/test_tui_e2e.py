@@ -137,6 +137,32 @@ class PlainTerminalTest(unittest.TestCase):
         self.assertIn('description: review parser', text, "opened busy's newest call (the Agent)")
         self.assertNotIn('command: rm -rf build', text, "did not open the call of the row the keys started on")
 
+    def test_hostile_keys_and_a_stray_half_escape_do_not_crash_or_eat_q(self):
+        # unicode digits once crashed the jump-by-number; Alt+[ leaves a half escape sequence behind
+        with Fixture() as fx:
+            proc, fd, tty = self.spawn(fx.env)
+            out = self.read(fd, 1.5)
+            for k in ('²', '٣', '中', '🚀', '\x1b['):
+                os.write(fd, k.encode())
+                out += self.read(fd, 0.3)
+            os.write(fd, b'q')
+            end = time.time() + 5
+            while proc.poll() is None and time.time() < end:
+                out += self.read(fd, 0.1)
+            status = proc.poll()
+            if status is None:
+                proc.kill()
+            os.close(fd), os.close(tty)
+        self.assertEqual(status, 0, 'q quits even right after a stray half escape sequence')
+        self.assertNotIn(b'Traceback', out)
+
+    def test_needs_a_terminal(self):
+        with Fixture() as fx:
+            r = subprocess.run([sys.executable, TUI], env=fx.env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=10)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('needs a terminal', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+
     def test_ctrl_c_also_restores_the_terminal(self):
         with Fixture() as fx:
             proc, fd, tty = self.spawn(fx.env)
@@ -206,7 +232,8 @@ class ScreenTest(unittest.TestCase):
 
         self.keys('Up', 'Up', 'Up', 'Up', 'Tab', 'Enter')   # back to asking, into its calls, open the call
         s = self.wait_for(lambda s: 'input' in s and 'command: rm -rf build' in s, 'the opened call')
-        self.assertIn('still running…', s, 'a call awaiting permission has no output yet')
+        self.assertIn('waiting for you', s, 'a call awaiting permission says so, not "running"')
+        self.assertIn('not run yet: waiting for your approval', s)
 
         self.keys('Left', 'Left')   # back out to the tree
         self.wait_for(lambda s: 'tab calls' in s, 'the tree footer')

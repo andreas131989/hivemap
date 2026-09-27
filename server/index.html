@@ -117,7 +117,7 @@ const cut = (s, n) => (s = String(s ?? '')).length > n ? s.slice(0, n - 1) + '�
 const ago = s => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s/60)}m` : `${(s/3600).toFixed(1)}h`;
 const dur = s => s < 1 ? `${Math.round(s*1000)}ms` : s < 60 ? `${s.toFixed(1)}s` : ago(s);
 const base = p => p.split('/').pop();
-const home = p => String(p || '').replace(/^\/home\/[^/]+/, '~');
+const home = p => String(p || '').replace(/^\/(home|Users)\/[^/]+/, '~');
 const modelName = m => m ? m.replace(/^claude-/, '').replace(/-(\d+)-(\d+)(-\d{8})?$/, ' $1.$2').replace(/-(\d+)$/, ' $1') : '—';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -475,8 +475,10 @@ function activity(a, now){
   if (a.running) return 'thinking…';
   return a.last ? `idle · ${ago(now - a.last)} ago` : 'idle';
 }
+// the main agent's open calls in a waiting session are the ones waiting for the user's approval
+const pendingOnYou = (s, aid, e) => e.t1 == null && s.status === 'waiting' && aid === 'main';
 function callRows(s, a, now){
-  return a.events.filter(e => e.c !== 'prompt').slice(-14).reverse().map(e => `<button class="row" data-sel="${esc(`t:${s.id}:${a.id}:${e.t0}:${e.n}`)}"><i class="${e.t1 == null ? 'live' : ''}" style="background:${e.err ? ERR : COL[e.c]}"></i><span class="t">${esc(e.n)}<small>${esc(e.s)}</small></span><span class="d ${e.err ? 'err' : ''}">${e.t1 == null ? 'running' : dur(e.t1 - e.t0)}</span></button>`).join('') || '<div class="row"><i></i><span class="t" style="color:var(--muted)">No tool calls in this window</span></div>';
+  return a.events.filter(e => e.c !== 'prompt').slice(-14).reverse().map(e => `<button class="row" data-sel="${esc(`t:${s.id}:${a.id}:${e.t0}:${e.n}`)}"><i class="${e.t1 == null ? 'live' : ''}" style="background:${e.err ? ERR : COL[e.c]}"></i><span class="t">${esc(e.n)}<small>${esc(e.s)}</small></span><span class="d ${e.err ? 'err' : ''}" ${pendingOnYou(s, a.id, e) ? 'style="color:var(--wait)"' : ''}>${pendingOnYou(s, a.id, e) ? 'waiting for you' : e.t1 == null ? 'running' : dur(e.t1 - e.t0)}</span></button>`).join('') || '<div class="row"><i></i><span class="t" style="color:var(--muted)">No tool calls in this window</span></div>';
 }
 // A call id ('t:sid:aid:t0:name') resolves even when the call is too old to be drawn as a node.
 function find(id){
@@ -523,13 +525,13 @@ function renderInspector(){
     body += `<dl class="kv"><dt>Session</dt><dd><button class="row" style="padding:0" data-sel="${esc(`s:${n.s.id}`)}"><i style="background:${ACCENT}"></i><span class="t">${esc(n.s.name)}</span><span></span></button></dd><dt>Now</dt><dd>${esc(activity(a, now))}</dd><dt>Model</dt><dd>${esc(modelName(a.model))}</dd><dt>Context</dt><dd>${a.ctx ? Math.round(a.ctx/1000) + 'k tokens' : '—'}</dd></dl>`;
     body += `<div><div class="sec">Recent calls</div><div class="list">${callRows(n.s, a, now)}</div></div>`;
   } else if (n.kind === 'tool'){
-    const e = n.e;
+    const e = n.e, pending = pendingOnYou(n.s, n.id.split(':')[2], e);
     kind = `tool call · ${CATS[e.c]}`;
     title = e.n;
-    body += `<dl class="kv"><dt>Status</dt><dd class="${e.err ? 'err' : ''}">${e.t1 == null ? `running ${dur(now - e.t0)}` : e.err ? 'failed' : 'done'}</dd><dt>Took</dt><dd>${e.t1 == null ? '—' : dur(e.t1 - e.t0)}</dd><dt>Started</dt><dd>${ago(now - e.t0)} ago</dd><dt>Session</dt><dd>${esc(n.s.name)}</dd></dl>`;
+    body += `<dl class="kv"><dt>Status</dt><dd class="${e.err ? 'err' : ''}" ${pending ? 'style="color:var(--wait)"' : ''}>${pending ? `waiting for you · ${dur(now - e.t0)}` : e.t1 == null ? `running ${dur(now - e.t0)}` : e.err ? 'failed' : 'done'}</dd><dt>Took</dt><dd>${e.t1 == null ? '—' : dur(e.t1 - e.t0)}</dd><dt>Started</dt><dd>${ago(now - e.t0)} ago</dd><dt>Session</dt><dd>${esc(n.s.name)}</dd></dl>`;
     const d = calls[n.id];
     body += d ? `<div><div class="sec">Input</div><pre class="io">${esc(d.in) || '(none)'}</pre></div>`
-      + `<div><div class="sec">Output</div><pre class="io ${e.err ? 'err' : ''}">${d.done ? esc(d.out) || '(none)' : 'still running…'}</pre></div>`
+      + `<div><div class="sec">Output</div><pre class="io ${e.err ? 'err' : ''}">${d.done ? esc(d.out) || '(none)' : pending ? 'not run yet: waiting for your approval' : 'still running…'}</pre></div>`
       : `<div><div class="sec">Detail</div><div class="quote">${esc(e.s)}</div></div>`;
     if (!d || !d.done) loadCall(n.id);
     if (e.f) body += `<button class="row" data-sel="f:${esc(e.f)}"><i style="background:${COL[e.c]}"></i><span class="t">${esc(base(e.f))}<small>open file node</small></span><span></span></button>`;

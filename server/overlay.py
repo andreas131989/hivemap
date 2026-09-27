@@ -22,8 +22,13 @@ CLAUDE = Path.home() / '.claude'
 HERE = Path(__file__).resolve().parent
 PORT = int(os.environ.get('HIVEMAP_PORT', 7777))
 KEEP_S = 3600          # history sent to the page
-AGENT_QUIET_S = 12
-DETAIL_CHARS = 4000    # per call input/output kept for the terminal view's detail pane     # a subagent whose file changed this recently counts as running
+AGENT_QUIET_S = 12     # a subagent whose file changed this recently counts as running
+DETAIL_CHARS = 4000    # per call input/output kept for the terminal view's detail pane
+
+
+def as_str(v, default=''):
+    """v if it is a string, else default: Claude Code's files are read, never trusted to have the expected types."""
+    return v if isinstance(v, str) else default
 
 
 def ts(s):
@@ -109,9 +114,9 @@ class Tail:
     def feed(self, d):
         kind = d.get('type')
         if kind == 'ai-title':
-            self.title = d.get('aiTitle')
+            self.title = as_str(d.get('aiTitle'), self.title)
         elif kind == 'last-prompt':
-            self.prompt = d.get('lastPrompt')
+            self.prompt = as_str(d.get('lastPrompt'), self.prompt)
         if kind not in ('assistant', 'user'):
             return
         when = ts(d['timestamp'])
@@ -119,16 +124,17 @@ class Tail:
         msg = d.get('message') or {}
         content = msg.get('content')
         if kind == 'assistant':
-            self.model = msg.get('model') or self.model
+            self.model = as_str(msg.get('model')) or self.model
             u = msg.get('usage') if isinstance(msg.get('usage'), dict) else {}
-            ctx = sum(u.get(k) or 0 for k in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'))
+            ctx = sum(v for k in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
+                      if isinstance(v := u.get(k), (int, float)) and not isinstance(v, bool))
             if ctx:
                 self.ctx = ctx
             for b in content if isinstance(content, list) else []:
                 if isinstance(b, dict) and b.get('type') == 'tool_use' and isinstance(b.get('id'), str) and isinstance(b.get('name'), str):
                     inp = b.get('input') if isinstance(b.get('input'), dict) else {}
                     e = {'id': b['id'], 'n': b['name'], 's': summarize(inp), 'c': category(b['name']),
-                         'f': inp.get('file_path') or inp.get('notebook_path'), 't0': when, 't1': None, 'err': False, 'in': detail(inp)}
+                         'f': as_str(inp.get('file_path')) or as_str(inp.get('notebook_path')) or None, 't0': when, 't1': None, 'err': False, 'in': detail(inp)}
                     self.events.append(e)
                     self.open[b['id']] = e
             return
@@ -150,7 +156,10 @@ class Tail:
                 e['t1'] = when
             self.open.clear()
             return
-        if text and not results and not d.get('isMeta') and not d.get('isCompactSummary') and not text.startswith('<'):
+        # Claude Code's own wrappers (<command-name>, <local-command-stdout>, <system-reminder>, ...) all use hyphenated
+        # tags; a prompt that merely starts with pasted HTML like <div> is still the user's prompt
+        wrapper = re.match(r'<[a-z]+(-[a-z]+)+>', text)
+        if text and not results and not wrapper and not d.get('isMeta') and not d.get('isCompactSummary'):
             self.events.append({'n': 'Prompt', 's': text.splitlines()[0][:140], 'c': 'prompt', 't0': when, 't1': when, 'err': False,
                                 'in': text[:DETAIL_CHARS]})
 
@@ -199,7 +208,7 @@ def session_json(s, now, full):
     if path is None:
         return None
     main = tail(path)
-    status = s.get('status', 'idle')   # Claude Code writes busy / idle / waiting (and why, in waitingFor)
+    status = s.get('status') if s.get('status') in ('busy', 'idle', 'waiting') else 'idle'   # and why it waits, in waitingFor
     busy = status in ('busy', 'waiting')   # a waiting session's pending call is still open, not ended
     agents = [agent_json('main', None, 'main', 'main', main, busy, now, full)]
 
@@ -210,6 +219,7 @@ def session_json(s, now, full):
             meta = json.loads(m.read_text())
         except (OSError, ValueError):
             meta = {}
+        meta = {k: as_str(meta.get(k)) for k in ('toolUseId', 'parentAgentId', 'description', 'agentType')} if isinstance(meta, dict) else {}
         subs.append((aid, meta, tail(m.with_name(f'agent-{aid}.jsonl'))))
     open_ids = set(main.open).union(*(t.open for _, _, t in subs))
     ids = {aid for aid, _, _ in subs}
@@ -219,11 +229,13 @@ def session_json(s, now, full):
             continue
         parent = meta.get('parentAgentId')
         agents.append(agent_json(aid, parent if parent in ids else 'main',
-                                 meta.get('description') or aid, meta.get('agentType', 'agent'), t, running, now, full))
-    return {'id': sid, 'pid': s.get('pid'), 'name': s.get('name') or sid[:8], 'cwd': s.get('cwd', ''), 'status': status,
-            'waiting_for': s.get('waitingFor') if status == 'waiting' else None,
-            'kind': s.get('kind'), 'title': main.title, 'prompt': main.prompt, 'model': main.model,
-            'ctx': main.ctx, 'updated': s.get('updatedAt', 0) / 1000, 'agents': agents}
+                                 meta.get('description') or aid, meta.get('agentType') or 'agent', t, running, now, full))
+    updated = s.get('updatedAt')
+    return {'id': sid, 'pid': s.get('pid'), 'name': as_str(s.get('name')) or sid[:8], 'cwd': as_str(s.get('cwd')), 'status': status,
+            'waiting_for': as_str(s.get('waitingFor')) or None if status == 'waiting' else None,
+            'kind': as_str(s.get('kind')) or None, 'title': main.title, 'prompt': main.prompt, 'model': main.model,
+            'ctx': main.ctx, 'updated': updated / 1000 if isinstance(updated, (int, float)) and not isinstance(updated, bool) else 0,
+            'agents': agents}
 
 
 def state(full=False):
@@ -237,7 +249,7 @@ def state(full=False):
                 s = json.loads(f.read_text())
             except (OSError, ValueError):
                 continue
-            if 'sessionId' in s and alive(s.get('pid')):
+            if isinstance(s, dict) and as_str(s.get('sessionId')) and alive(s.get('pid')):
                 j = session_json(s, now, full)
                 if j:
                     out.append(j)
@@ -336,7 +348,14 @@ def tmux_focus(pid):
 
 def focus(pid):
     """Bring the terminal pane running this Claude Code session to the front: herdr first, then tmux."""
-    return (HERDR and herdr_focus(pid)) or (TMUX and tmux_focus(pid)) or None
+    if HERDR:
+        try:
+            pane = herdr_focus(pid)
+            if pane:
+                return pane
+        except (OSError, ValueError, subprocess.SubprocessError):   # herdr installed but not running, or answering oddly
+            pass
+    return (TMUX and tmux_focus(pid)) or None
 
 
 def live_pids():
@@ -352,9 +371,10 @@ def live_pids():
 def notify(text):
     """Desktop notification: notify-send on Linux, osascript on macOS; silently nothing elsewhere."""
     if shutil.which('notify-send'):
-        cmd = ['notify-send', '--app-name=hivemap', 'hivemap', text]
-    elif shutil.which('osascript'):
-        cmd = ['osascript', '-e', f'display notification {json.dumps(text)} with title "hivemap"']
+        cmd = ['notify-send', '--app-name=hivemap', '--', 'hivemap', text]   # '--': a name starting with '-' isn't an option
+    elif shutil.which('osascript'):   # passed as an argument: no AppleScript quoting, so any name shows as written
+        cmd = ['osascript', '-e', 'on run argv', '-e', 'display notification (item 1 of argv) with title "hivemap"',
+               '-e', 'end run', text]
     else:
         return
     subprocess.run(cmd, capture_output=True, timeout=5)
@@ -393,6 +413,10 @@ def watch(every=2):
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], ConnectionError):   # a closed tab mid-response is normal
+            super().handle_error(request, client_address)
 
     def server_bind(self):
         # HTTPServer.server_bind also looks up the host's FQDN, which can take ~30s on macOS before the socket
@@ -447,7 +471,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = json.loads(self.rfile.read(max(0, min(int(self.headers.get('Content-Length', 0)), 2000))))
-        except ValueError:
+        except (ValueError, RecursionError):   # older Pythons give up on ~1000-deep JSON with RecursionError
             body = None
         body = body if isinstance(body, dict) else {}
         if self.path == '/api/select':

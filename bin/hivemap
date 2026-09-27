@@ -12,7 +12,7 @@ PORT="${HIVEMAP_PORT:-7777}"
 URL="http://127.0.0.1:$PORT"
 LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hivemap.log"
 
-up() { curl -fs -o /dev/null --max-time 1 "$URL/api/state"; }
+up() { curl -fs --max-time 1 "$URL/api/select" | grep -q '"v"'; }   # hivemap answering, not just anything on the port
 # Run in the background in a session of its own, outliving this shell. Python's start_new_session is
 # setsid on every platform (macOS has no setsid command) and closes stray file descriptors.
 detach() { python3 -c 'import subprocess, sys; subprocess.Popen(sys.argv[1:], start_new_session=True)' "$@"; }
@@ -21,11 +21,11 @@ case "${1:-open}" in
   status) if up; then echo "hivemap is running at $URL"; else echo "hivemap is not running"; fi; exit 0 ;;
   # matches only this port's server: never an editor with the file open, never another instance
   # (the interpreter shows up as python3 on Linux but as .../Python.app/.../Python on macOS)
-  stop)   if pkill -f "^[^ ]*[Pp]ython[0-9.]* [^ ]*hivemap[^ ]*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
+  stop)   if pkill -f "^[^ ]*[Pp]ython[0-9.]* .*hivemap.*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
   pane)   # the terminal view in a new pane beside this one, leaving the cursor where it is
     if [ -n "${HERDR_PANE_ID:-}" ]; then
       if pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
-          && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null; then
+          && herdr pane run "$pane" "env HIVEMAP_PORT=$PORT '$ROOT/bin/hivemap' tui" >/dev/null; then
         echo "hivemap: map open in herdr pane $pane"
         exit 0
       fi
@@ -33,7 +33,7 @@ case "${1:-open}" in
       exit 1
     elif [ -n "${TMUX:-}" ]; then
       # split the pane we were run from (no arrays: macOS ships bash 3.2, where an empty one trips set -u)
-      if pane=$(tmux split-window -h -d -l 40% ${TMUX_PANE:+-t "$TMUX_PANE"} -e "HIVEMAP_PORT=$PORT" -P -F '#{pane_id}' "$ROOT/bin/hivemap tui"); then
+      if pane=$(tmux split-window -h -d -l 40% ${TMUX_PANE:+-t "$TMUX_PANE"} -e "HIVEMAP_PORT=$PORT" -P -F '#{pane_id}' "'$ROOT/bin/hivemap' tui"); then
         echo "hivemap: map open in tmux pane $pane"
         exit 0
       fi

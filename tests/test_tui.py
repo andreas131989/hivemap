@@ -90,6 +90,7 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(text[text.index('output') + 1:text.index('output') + 3], ['a', 'b'])
         e.update(t1=None, out=None)
         self.assertIn('still running…', [plain(x).rstrip() for x in tui.call_detail(e, now, 40, 20, 0)[0]])
+        self.assertIn('not run yet: waiting for your approval', [plain(x).rstrip() for x in tui.call_detail(e, now, 40, 20, 0, pending=True)[0]])
 
 
 if __name__ == '__main__':
