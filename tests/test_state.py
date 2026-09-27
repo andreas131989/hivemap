@@ -55,46 +55,62 @@ class StateTest(unittest.TestCase):
         self.assertEqual(e['n'], 'Bash')
         self.assertIsNotNone(e['t1'], 'an idle session has nothing running, so an open call is shown as ended')
 
-    def test_waiting_sorts_first_then_busy_then_recent(self):
+    def test_waiting_comes_from_claude_code_and_sorts_first(self):
         with FakeClaude() as fake:
             for sid, status, updated in (('idle-new', 'idle', 3000), ('busy', 'busy', 1000), ('idle-old', 'idle', 2000)):
                 fake.session(sid, [], status=status, updated=updated)
-            fake.session('blocked', [], status='busy', updated=500, pid=1)   # pid 1 is always alive
-            real = overlay.herdr_status
-            overlay.herdr_status = lambda pids: {1: 'blocked'}
-            try:
-                sessions = overlay.state()['sessions']
-            finally:
-                overlay.herdr_status = real
-        self.assertEqual([(s['name'], s['status']) for s in sessions],
-                         [('blocked', 'waiting'), ('busy', 'busy'), ('idle-new', 'idle'), ('idle-old', 'idle')])
+            fake.session('asking', [
+                line(type='assistant', timestamp=stamp(5), message={'content': [tool_use('t1', 'Bash', command='rm -rf build')]}),
+            ], status='waiting', updated=500, waiting_for='permission prompt')
+            sessions = overlay.state()['sessions']
+        self.assertEqual([(s['name'], s['status'], s['waiting_for']) for s in sessions],
+                         [('asking', 'waiting', 'permission prompt'), ('busy', 'busy', None),
+                          ('idle-new', 'idle', None), ('idle-old', 'idle', None)])
+        call = sessions[0]['agents'][0]['events'][0]
+        self.assertIsNone(call['t1'], 'the call waiting for permission is still pending, not ended')
 
-    def test_sort_without_herdr(self):
+    def test_busy_before_idle(self):
         with FakeClaude() as fake:
             fake.session('idle-new', [], status='idle', updated=3000)
             fake.session('busy-old', [], status='busy', updated=1000)
             self.assertEqual([s['name'] for s in overlay.state()['sessions']], ['busy-old', 'idle-new'])
 
 
-class WaitingTest(unittest.TestCase):
-    def test_one_notification_per_wait(self):
-        seen, told = set(), []
-        for status in ('idle', 'waiting', 'waiting', 'busy', 'waiting'):
-            seen, started = overlay.new_waits([{'id': 's1', 'name': 'proj', 'status': status}], seen)
-            told += started
-        self.assertEqual(told, ['proj', 'proj'])
+class NotifyTest(unittest.TestCase):
+    def run_statuses(self, steps):
+        """steps: [(seconds, status, waiting_for)] for one session. Returns the messages sent."""
+        seen, told = {}, []
+        for t, status, why in steps:
+            seen, messages = overlay.news([{'id': 's1', 'name': 'proj', 'status': status, 'waiting_for': why}], seen, t)
+            told += messages
+        return told
 
+    def test_waiting_is_told_once_with_the_reason(self):
+        self.assertEqual(self.run_statuses([(0, 'busy', None), (2, 'waiting', 'permission prompt'), (4, 'waiting', 'permission prompt'),
+                                            (6, 'busy', None), (8, 'waiting', None)]),
+                         ['proj is waiting on you (permission prompt)', 'proj is waiting on you'])
+
+    def test_finished_only_after_real_work(self):
+        self.assertEqual(self.run_statuses([(0, 'idle', None), (1, 'busy', None), (5, 'idle', None)]), [], 'a 4s turn is not news')
+        self.assertEqual(self.run_statuses([(0, 'idle', None), (1, 'busy', None), (40, 'busy', None), (45, 'idle', None)]),
+                         ['proj finished'])
+
+    def test_first_sight_of_an_idle_session_is_not_news(self):
+        self.assertEqual(self.run_statuses([(0, 'idle', None), (100, 'idle', None)]), [])
+
+
+class JumpTest(unittest.TestCase):
     def test_herdr_pane_lookup_is_cached_until_panes_change(self):
         calls = []
         real = overlay.herdr
         overlay.herdr = lambda *a: calls.append(a) or {'process_info': {'foreground_process_group_id': 42 if a[-1] == 'p2' else 1}}
         overlay.panes.clear()
         try:
-            self.assertEqual(overlay.herdr_pane(42, {'p1': 'idle', 'p2': 'blocked'}), 'p2')
+            self.assertEqual(overlay.herdr_pane(42, {'p1', 'p2'}), 'p2')
             n = len(calls)
-            self.assertEqual(overlay.herdr_pane(42, {'p1': 'idle', 'p2': 'blocked'}), 'p2')
+            self.assertEqual(overlay.herdr_pane(42, {'p1', 'p2'}), 'p2')
             self.assertEqual(len(calls), n, 'same panes: answered from the cache')
-            self.assertIsNone(overlay.herdr_pane(7, {'p1': 'idle'}))
+            self.assertIsNone(overlay.herdr_pane(7, {'p1'}))
         finally:
             overlay.herdr = real
             overlay.panes.clear()

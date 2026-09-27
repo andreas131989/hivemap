@@ -27,9 +27,9 @@ sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthr
 - Python 3.9 or newer, standard library only
 - `bash`, `curl` and `pkill` (standard on most distributions)
 - Chrome, Chromium, Brave or Edge for the web map window (anything else opens in your default browser)
-- Optional: [herdr](https://herdr.dev), the terminal workspace manager. With it, hivemap can
-  jump to a session's pane, show which sessions are waiting on you, and notify you when one starts waiting.
-- Optional: `notify-send` (Linux) for those notifications; macOS has them built in.
+- Optional: [tmux](https://github.com/tmux/tmux) or [herdr](https://herdr.dev), so hivemap can jump to the pane
+  a session is running in.
+- Optional: `notify-send` (Linux) for desktop notifications; macOS has them built in.
 
 ## Install
 
@@ -72,7 +72,7 @@ and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera
 |---|---|
 | `↑` `↓` or `j` `k` | Select a session or agent; its tool calls show on the right |
 | `←` `→`, `h` `l` or space | Fold or unfold a session |
-| `enter` or `1`–`9` | Jump to that session's herdr pane |
+| `enter` or `1`–`9` | Jump to that session's tmux or herdr pane |
 | `tab` | Move into the call list: `↑` `↓` pick a call, `enter` or `→` opens its input and output, `←`, `tab` or backspace goes back |
 | `pgup` `pgdn` | Scroll |
 | `f` | Follow the top session (waiting first, then busy) and its most recently active agent |
@@ -82,9 +82,11 @@ and output. **Follow** (or `f`, or double-clicking empty space) keeps the camera
 The mouse works too: click a row or a call to select or open it, click a selected session to fold it, and
 scroll with the wheel.
 
-**Waiting on you:** when herdr reports a session as blocked (a permission prompt or a question), it turns
-yellow and moves to the top in both views, the web map's window title shows the count, and you get a desktop
-notification each time a session starts waiting (set `HIVEMAP_NOTIFY=0` to turn that off).
+**Waiting on you:** when Claude Code stops for you (a permission prompt, for example), the session turns yellow, moves to the
+top in both views and shows why ("waiting: permission prompt"), and the web map's window title shows the count.
+
+**Notifications:** you get a desktop notification when a session starts waiting on you, and when one finishes
+a turn that took longer than 30 seconds. Set `HIVEMAP_NOTIFY=0` to turn them off.
 
 ## How it works
 

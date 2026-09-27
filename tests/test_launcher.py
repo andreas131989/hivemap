@@ -66,6 +66,7 @@ class LauncherTest(unittest.TestCase):
             self.assertIsNone(decoy.poll(), 'stop must only kill the hivemap server')
         finally:
             decoy.kill()
+            decoy.wait()
 
     def test_stop_only_stops_its_own_port(self):
         other = {**self.env, 'HIVEMAP_PORT': str(free_port())}

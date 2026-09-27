@@ -38,22 +38,23 @@ class FakeClaude:
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name) / '.claude'
         (self.dir / 'sessions').mkdir(parents=True)
-        self.saved = overlay.CLAUDE, overlay.HERDR
-        overlay.CLAUDE, overlay.HERDR = self.dir, None
+        self.saved = overlay.CLAUDE, overlay.HERDR, overlay.TMUX
+        overlay.CLAUDE, overlay.HERDR, overlay.TMUX = self.dir, None, None
         overlay.tails.clear(), overlay.paths.clear(), overlay.panes.clear()
         overlay.SEL = {'id': None, 'by': '', 'v': 0}
         return self
 
     def __exit__(self, *exc):
-        overlay.CLAUDE, overlay.HERDR = self.saved
+        overlay.CLAUDE, overlay.HERDR, overlay.TMUX = self.saved
         overlay.tails.clear(), overlay.paths.clear(), overlay.panes.clear()
         self.tmp.cleanup()
 
-    def session(self, sid, lines, name=None, status='idle', pid=None, updated=0, subagents=()):
+    def session(self, sid, lines, name=None, status='idle', pid=None, updated=0, subagents=(), waiting_for=None):
         """Write a live session (its pid defaults to this test process, so it counts as running)."""
         (self.dir / 'sessions' / f'{sid}.json').write_text(json.dumps({
             'sessionId': sid, 'pid': pid or os.getpid(), 'name': name or sid, 'cwd': '/work/' + sid,
-            'status': status, 'kind': 'interactive', 'updatedAt': updated}))
+            'status': status, 'kind': 'interactive', 'updatedAt': updated,
+            **({'waitingFor': waiting_for} if waiting_for else {})}))
         transcript = self.dir / 'projects' / '-work' / f'{sid}.jsonl'
         transcript.parent.mkdir(parents=True, exist_ok=True)
         transcript.write_text(''.join(lines))

@@ -1,7 +1,7 @@
 {
   "name": "hivemap",
-  "version": "0.11.0",
-  "description": "Live, interactive map of your running Claude Code sessions, subagents, tool calls and the files they touch. Jumps to the session's herdr pane.",
+  "version": "0.12.0",
+  "description": "Live, interactive map of your running Claude Code sessions, subagents, tool calls and the files they touch. Shows which session is waiting on you, notifies you, and jumps to its tmux or herdr pane.",
   "author": {
     "name": "Andreas Krivas"
   },

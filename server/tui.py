@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Terminal view of the hivemap map: session/agent tree on the left, tool calls on the right.
 
-Tree:   ↑↓/jk select · ←→/space fold · enter jump to herdr pane · tab go to calls · f follow · d hide finished · q quit
+Tree:   ↑↓/jk select · ←→/space fold · enter jump to its herdr/tmux pane · tab go to calls · f follow · d hide finished · q quit
 Calls:  ↑↓ select · enter/→ open call (input + output) · tab/← back to tree
 Call:   ↑↓/pgup/pgdn scroll · tab/←/backspace back to calls
 Mouse:  click a row or a call, click a selected session to fold, wheel scrolls the side it is over.
@@ -116,7 +116,8 @@ def model(m):
 
 def header(s, a, width):
     if a is None:
-        head = [[('1', s['name']), ('2', f"  {s['status']} · {model(s['model'])} · {s['ctx'] // 1000}k ctx · pid {s['pid']}")],
+        status = [('1;33', f"  waiting: {s['waiting_for'] or 'you'}")] if s['status'] == 'waiting' else [('2', f"  {s['status']}")]
+        head = [[('1', s['name']), *status, ('2', f" · {model(s['model'])} · {s['ctx'] // 1000}k ctx · pid {s['pid']}")],
                 [('2', s['cwd'].replace(os.path.expanduser('~'), '~'))]]
         if s['title']:
             head.append([('3', s['title'])])
@@ -301,9 +302,9 @@ def main():
                 elif (k in ENTER and row) or (k.isdigit() and 0 < int(k) <= len(st['sessions'])):
                     s = row[1] if k in ENTER else st['sessions'][int(k) - 1]
                     try:
-                        msg = f"jumped to {s['name']}" if st['herdr'] and overlay.herdr_focus(s['pid']) else f"no herdr pane for {s['name']}"
-                    except Exception as err:   # herdr missing/slow: show it, keep the view alive
-                        msg = f'herdr: {err}'
+                        msg = f"jumped to {s['name']}" if st['jump'] and overlay.focus(s['pid']) else f"no herdr or tmux pane for {s['name']}"
+                    except Exception as err:   # herdr/tmux missing or slow: show it, keep the view alive
+                        msg = f'jump: {err}'
                 idx = clamp(idx, 0, len(keys) - 1)
                 sel = keys[idx] if keys else None
     except KeyboardInterrupt:

@@ -506,6 +506,7 @@ function renderInspector(){
   if (n.kind === 'session'){
     const s = n.s;
     kind = `session · ${s.status}`;
+    if (s.waiting_for) body += `<div class="quote" style="border-color:var(--wait)">Waiting on you: ${esc(s.waiting_for)}</div>`;
     body += `<dl class="kv"><dt>Folder</dt><dd>${esc(home(s.cwd))}</dd><dt>Model</dt><dd>${esc(modelName(s.model))}</dd><dt>Context</dt><dd>${s.ctx ? Math.round(s.ctx/1000) + 'k tokens' : '—'}</dd>${s.title ? `<dt>Topic</dt><dd>${esc(s.title)}</dd>` : ''}</dl>`;
     if (s.prompt) body += `<div><div class="sec">Last prompt</div><div class="quote">${esc(s.prompt)}</div></div>`;
     const subs = s.agents.filter(a => a.id !== 'main');
@@ -532,7 +533,7 @@ function renderInspector(){
     body += `<dl class="kv"><dt>Path</dt><dd>${esc(home(n.path))}</dd></dl>`;
     body += `<div><div class="sec">Touched by</div><div class="list">${n.touches.map(t => `<button class="row" data-sel="${esc(t.agent.id)}"><i style="background:${t.write ? COL.write : COL.read}"></i><span class="t">${esc(t.agent.label)}<small>${esc(t.session.name)}</small></span><span class="d">${t.write ? 'edit' : 'read'} · ${ago(now - t.t)}</span></button>`).join('')}</div></div>`;
   }
-  if (data.herdr && n.s && (n.kind === 'session' || n.kind === 'agent'))
+  if (data.jump && n.s && (n.kind === 'session' || n.kind === 'agent'))
     body = `<div class="jump"><button data-jump="${esc(n.s.pid)}">Jump to terminal pane</button><span>${esc(jumpMsg[n.s.pid] || '')}</span></div>` + body;
   // re-rendered every poll: keep the reader's scroll position while the same node stays selected
   const keep = box.dataset.id === n.id ? [...box.querySelectorAll('.ins-body, pre.io')].map(x => x.scrollTop) : [];
@@ -556,7 +557,7 @@ async function jump(pid){
   try {
     const r = await fetch('/api/focus', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pid})});
     const j = await r.json().catch(() => ({}));
-    jumpMsg[pid] = j.pane ? `Focused herdr pane ${j.pane}` : 'No herdr pane is running this session.';
+    jumpMsg[pid] = j.pane ? `Focused pane ${j.pane}` : 'No herdr or tmux pane is running this session.';
   } catch { jumpMsg[pid] = 'Map server is not responding.'; }
   renderInspector();
 }

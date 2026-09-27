@@ -199,8 +199,8 @@ def session_json(s, now, full):
     if path is None:
         return None
     main = tail(path)
-    status = s.get('status', 'idle')
-    busy = status == 'busy'
+    status = s.get('status', 'idle')   # Claude Code writes busy / idle / waiting (and why, in waitingFor)
+    busy = status in ('busy', 'waiting')   # a waiting session's pending call is still open, not ended
     agents = [agent_json('main', None, 'main', 'main', main, busy, now, full)]
 
     subs = []
@@ -221,6 +221,7 @@ def session_json(s, now, full):
         agents.append(agent_json(aid, parent if parent in ids else 'main',
                                  meta.get('description') or aid, meta.get('agentType', 'agent'), t, running, now, full))
     return {'id': sid, 'pid': s.get('pid'), 'name': s.get('name') or sid[:8], 'cwd': s.get('cwd', ''), 'status': status,
+            'waiting_for': s.get('waitingFor') if status == 'waiting' else None,
             'kind': s.get('kind'), 'title': main.title, 'prompt': main.prompt, 'model': main.model,
             'ctx': main.ctx, 'updated': s.get('updatedAt', 0) / 1000, 'agents': agents}
 
@@ -240,15 +241,11 @@ def state(full=False):
                 j = session_json(s, now, full)
                 if j:
                     out.append(j)
-    herdr_st = herdr_status([j['pid'] for j in out])
-    for j in out:
-        if herdr_st.get(j['pid']) == 'blocked':
-            j['status'] = 'waiting'
     out.sort(key=lambda j: ({'waiting': 0, 'busy': 1}.get(j['status'], 2), -j['updated']))
-    return {'now': now, 'herdr': HERDR is not None, 'sessions': out}
+    return {'now': now, 'jump': bool(HERDR or TMUX), 'sessions': out}
 
 
-HERDR = shutil.which('herdr')
+HERDR, TMUX = shutil.which('herdr'), shutil.which('tmux')
 # Selection shared by the web page and the terminal view: a node id ('s:<sid>', 'a:<sid>:<aid>',
 # 't:<sid>:<aid>:<t0>:<name>' or 'f:<path>'), who set it, and a counter so each side only applies news.
 SEL = {'id': None, 'by': '', 'v': 0}
@@ -281,8 +278,8 @@ panes = {}   # Claude Code pid -> (herdr pane id or None, the pane set it was lo
 
 
 def claude_panes():
-    """{pane id: agent_status} for herdr panes running Claude Code."""
-    return {a['pane_id']: a.get('agent_status') for a in herdr('agent', 'list').get('agents', []) if a.get('agent') == 'claude'}
+    """herdr panes running Claude Code."""
+    return {a['pane_id'] for a in herdr('agent', 'list').get('agents', []) if a.get('agent') == 'claude'}
 
 
 def herdr_pane(pid, agents):
@@ -301,23 +298,38 @@ def herdr_pane(pid, agents):
     return found
 
 
-def herdr_status(pids):
-    """{pid: herdr agent_status}; 'blocked' means Claude Code is waiting on the user."""
-    if not HERDR:
-        return {}
-    try:
-        agents = claude_panes()
-        return {pid: agents[pane] for pid in pids if (pane := herdr_pane(pid, agents))}
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return {}
-
-
 def herdr_focus(pid):
     """Focus the herdr pane running this Claude Code pid. Returns the pane id or None."""
     pane = herdr_pane(pid, claude_panes())
     if pane:
         subprocess.run([HERDR, 'agent', 'focus', pane], capture_output=True, timeout=5, check=True)
     return pane
+
+
+def ancestors(pid):
+    """pid and its parents up to init (ps works on Linux and macOS)."""
+    chain = []
+    while pid > 1 and pid not in chain and len(chain) < 50:
+        chain.append(pid)
+        out = subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True, timeout=5).stdout.strip()
+        pid = int(out) if out.isdigit() else 0
+    return chain
+
+
+def tmux_focus(pid):
+    """Select the tmux pane whose shell started this Claude Code pid. Returns the pane id or None."""
+    listing = subprocess.run([TMUX, 'list-panes', '-a', '-F', '#{pane_id} #{pane_pid}'], capture_output=True, text=True, timeout=5)
+    shells = dict(reversed(line.split()) for line in listing.stdout.splitlines() if len(line.split()) == 2)
+    pane = next((shells[str(p)] for p in ancestors(pid) if str(p) in shells), None)
+    if pane:
+        for cmd in ('switch-client', 'select-window', 'select-pane'):   # switch-client fails with no attached client; fine
+            subprocess.run([TMUX, cmd, '-t', pane], capture_output=True, timeout=5)
+    return pane
+
+
+def focus(pid):
+    """Bring the terminal pane running this Claude Code session to the front: herdr first, then tmux."""
+    return (HERDR and herdr_focus(pid)) or (TMUX and tmux_focus(pid)) or None
 
 
 def live_pids():
@@ -341,22 +353,34 @@ def notify(text):
     subprocess.run(cmd, capture_output=True, timeout=5)
 
 
-def new_waits(sessions, before):
-    """(ids waiting now, names of sessions that started waiting since `before`)."""
-    now = {j['id']: j['name'] for j in sessions if j['status'] == 'waiting'}
-    return set(now), [now[i] for i in now.keys() - before]
+FINISH_AFTER_S = 30   # a turn shorter than this isn't worth a "finished" notification
 
 
-def watch_waiting(every=2):
-    """Notify once each time a session starts waiting on the user."""
-    waiting = set()
+def news(sessions, before, now):
+    """Status changes worth a notification. before/after: {session id: (status, since)}. Returns (after, messages)."""
+    after, messages = {}, []
+    for j in sessions:
+        old, since = before.get(j['id'], (None, now))
+        if j['status'] != old:
+            if j['status'] == 'waiting':
+                messages.append(f"{j['name']} is waiting on you" + (f" ({j['waiting_for']})" if j.get('waiting_for') else ''))
+            elif j['status'] == 'idle' and old == 'busy' and now - since >= FINISH_AFTER_S:
+                messages.append(f"{j['name']} finished")
+            since = now
+        after[j['id']] = (j['status'], since)
+    return after, messages
+
+
+def watch(every=2):
+    """Desktop notifications when a session starts waiting on you, or finishes a real piece of work."""
+    seen = {}
     while True:
         try:
-            waiting, started = new_waits(state()['sessions'], waiting)
-            for name in started:
-                notify(f'{name} is waiting on you')
+            seen, messages = news(state()['sessions'], seen, time.time())
+            for m in messages:
+                notify(m)
         except Exception as err:   # never let the watcher die; the log says why it hiccuped
-            print(f'watch_waiting: {err!r}', flush=True)
+            print(f'watch: {err!r}', flush=True)
         time.sleep(every)
 
 
@@ -429,7 +453,7 @@ class Handler(BaseHTTPRequestHandler):
                 SEL = {'id': nid, 'by': by, 'v': SEL['v'] + 1}
             self.reply(json.dumps(SEL).encode())
             return
-        if not HERDR:
+        if not (HERDR or TMUX):
             self.send_error(404)
             return
         pid = body.get('pid')
@@ -437,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(b'{"error":"unknown session"}', code=400)
             return
         try:
-            pane = herdr_focus(pid)
+            pane = focus(pid)
         except (OSError, ValueError, subprocess.SubprocessError):
             pane = None
         self.reply(json.dumps({'pane': pane}).encode(), code=200 if pane else 404)
@@ -451,6 +475,6 @@ if __name__ == '__main__':
         PORT = int(sys.argv[1])
     httpd = Server(('127.0.0.1', PORT), Handler)
     print(f'hivemap on http://127.0.0.1:{PORT}', flush=True)
-    if HERDR and os.environ.get('HIVEMAP_NOTIFY', '1') != '0':   # waiting is only known through herdr
-        threading.Thread(target=watch_waiting, daemon=True).start()
+    if os.environ.get('HIVEMAP_NOTIFY', '1') != '0':
+        threading.Thread(target=watch, daemon=True).start()
     httpd.serve_forever()
