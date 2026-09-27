@@ -74,8 +74,8 @@ def category(name):
 class Tail:
     """Incrementally parses one transcript .jsonl file."""
 
-    def __init__(self, path):
-        self.path, self.pos, self.buf = path, 0, b''
+    def __init__(self, path, ino=None):
+        self.path, self.pos, self.buf, self.ino = path, 0, b'', ino
         self.events = deque(maxlen=500)
         self.open = {}
         self.title = self.prompt = self.model = self.last_t = None
@@ -84,19 +84,24 @@ class Tail:
 
     def poll(self):
         try:
-            self.mtime = self.path.stat().st_mtime
             with open(self.path, 'rb') as f:
+                st = os.fstat(f.fileno())
+                if st.st_ino != self.ino or st.st_size < self.pos:   # new, replaced or truncated: start over
+                    self.__init__(self.path, st.st_ino)
+                self.mtime = st.st_mtime
                 f.seek(self.pos)
-                chunk = f.read()
+                for raw in f:   # line by line, so a huge transcript is never held in memory at once
+                    if not raw.endswith(b'\n'):   # still being written; finish it next poll
+                        self.buf += raw
+                        break
+                    line, self.buf = self.buf + raw, b''
+                    try:
+                        self.feed(json.loads(line.decode('utf-8', 'replace')))
+                    except (ValueError, KeyError, TypeError, AttributeError):
+                        pass
                 self.pos = f.tell()
         except OSError:
-            return self
-        *lines, self.buf = (self.buf + chunk).split(b'\n')
-        for line in lines:
-            try:
-                self.feed(json.loads(line))
-            except (ValueError, KeyError, TypeError, AttributeError):
-                pass
+            pass
         return self
 
     def feed(self, d):
@@ -113,12 +118,12 @@ class Tail:
         content = msg.get('content')
         if kind == 'assistant':
             self.model = msg.get('model') or self.model
-            u = msg.get('usage') or {}
-            ctx = u.get('input_tokens', 0) + u.get('cache_read_input_tokens', 0) + u.get('cache_creation_input_tokens', 0)
+            u = msg.get('usage') if isinstance(msg.get('usage'), dict) else {}
+            ctx = sum(u.get(k) or 0 for k in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'))
             if ctx:
                 self.ctx = ctx
-            for b in content or []:
-                if b.get('type') == 'tool_use':
+            for b in content if isinstance(content, list) else []:
+                if isinstance(b, dict) and b.get('type') == 'tool_use' and isinstance(b.get('id'), str) and isinstance(b.get('name'), str):
                     inp = b.get('input') if isinstance(b.get('input'), dict) else {}
                     e = {'id': b['id'], 'n': b['name'], 's': summarize(inp), 'c': category(b['name']),
                          'f': inp.get('file_path') or inp.get('notebook_path'), 't0': when, 't1': None, 'err': False, 'in': detail(inp)}
@@ -126,18 +131,24 @@ class Tail:
                     self.open[b['id']] = e
             return
         blocks = [{'type': 'text', 'text': content}] if isinstance(content, str) else (content or [])
-        texts = []
+        texts, results = [], False
         for b in blocks:
             if not isinstance(b, dict):
                 continue
             if b.get('type') == 'tool_result':
+                results = True
                 e = self.open.pop(b.get('tool_use_id'), None)
                 if e:
                     e['t1'], e['err'], e['out'] = when, bool(b.get('is_error')), result_text(b.get('content'))
             elif b.get('type') == 'text':
                 texts.append(b.get('text', ''))
-        text = ' '.join(texts).strip()
-        if text and not d.get('isMeta') and not text.startswith('<'):
+        text = ' '.join(t for t in texts if isinstance(t, str)).strip()
+        if text.startswith('[Request interrupted'):   # whatever was running died with the interrupt
+            for e in self.open.values():
+                e['t1'] = when
+            self.open.clear()
+            return
+        if text and not results and not d.get('isMeta') and not d.get('isCompactSummary') and not text.startswith('<'):
             self.events.append({'n': 'Prompt', 's': text.splitlines()[0][:140], 'c': 'prompt', 't0': when, 't1': when, 'err': False,
                                 'in': text[:DETAIL_CHARS]})
 
@@ -318,6 +329,8 @@ def live_pids():
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 10   # a client that stalls mid-request gives up its thread
+
     def allowed(self):
         # Transcripts are private: refuse DNS-rebound hosts, serve only to this machine's loopback names.
         if self.headers.get('Host') in (f'127.0.0.1:{PORT}', f'localhost:{PORT}'):
@@ -330,6 +343,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
+        # no framing by other sites (a framed page could be clicked through to "Jump to terminal pane")
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -357,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 2000)))
+            body = json.loads(self.rfile.read(max(0, min(int(self.headers.get('Content-Length', 0)), 2000))))
         except ValueError:
             body = None
         body = body if isinstance(body, dict) else {}

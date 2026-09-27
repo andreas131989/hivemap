@@ -506,12 +506,12 @@ function renderInspector(){
     body += `<dl class="kv"><dt>Folder</dt><dd>${esc(home(s.cwd))}</dd><dt>Model</dt><dd>${esc(modelName(s.model))}</dd><dt>Context</dt><dd>${s.ctx ? Math.round(s.ctx/1000) + 'k tokens' : '—'}</dd>${s.title ? `<dt>Topic</dt><dd>${esc(s.title)}</dd>` : ''}</dl>`;
     if (s.prompt) body += `<div><div class="sec">Last prompt</div><div class="quote">${esc(s.prompt)}</div></div>`;
     const subs = s.agents.filter(a => a.id !== 'main');
-    if (subs.length) body += `<div><div class="sec">Subagents</div><div class="list">${subs.map(a => `<button class="row" data-sel="a:${s.id}:${a.id}"><i class="${a.running ? 'live' : ''}" style="background:${a.running ? COL.agent : FAINT}"></i><span class="t">${esc(a.label)}<small>${esc(a.type)}</small></span><span class="d">${a.running ? 'running' : 'done'}</span></button>`).join('')}</div></div>`;
+    if (subs.length) body += `<div><div class="sec">Subagents</div><div class="list">${subs.map(a => `<button class="row" data-sel="${esc(`a:${s.id}:${a.id}`)}"><i class="${a.running ? 'live' : ''}" style="background:${a.running ? COL.agent : FAINT}"></i><span class="t">${esc(a.label)}<small>${esc(a.type)}</small></span><span class="d">${a.running ? 'running' : 'done'}</span></button>`).join('')}</div></div>`;
     body += `<div><div class="sec">Main agent · ${esc(activity(s.agents[0], now))}</div><div class="list">${callRows(s, s.agents[0], now)}</div></div>`;
   } else if (n.kind === 'agent'){
     const a = n.a;
     kind = `${a.type} · ${a.running ? 'running' : 'finished'}`;
-    body += `<dl class="kv"><dt>Session</dt><dd><button class="row" style="padding:0" data-sel="s:${n.s.id}"><i style="background:${ACCENT}"></i><span class="t">${esc(n.s.name)}</span><span></span></button></dd><dt>Now</dt><dd>${esc(activity(a, now))}</dd><dt>Model</dt><dd>${esc(modelName(a.model))}</dd><dt>Context</dt><dd>${a.ctx ? Math.round(a.ctx/1000) + 'k tokens' : '—'}</dd></dl>`;
+    body += `<dl class="kv"><dt>Session</dt><dd><button class="row" style="padding:0" data-sel="${esc(`s:${n.s.id}`)}"><i style="background:${ACCENT}"></i><span class="t">${esc(n.s.name)}</span><span></span></button></dd><dt>Now</dt><dd>${esc(activity(a, now))}</dd><dt>Model</dt><dd>${esc(modelName(a.model))}</dd><dt>Context</dt><dd>${a.ctx ? Math.round(a.ctx/1000) + 'k tokens' : '—'}</dd></dl>`;
     body += `<div><div class="sec">Recent calls</div><div class="list">${callRows(n.s, a, now)}</div></div>`;
   } else if (n.kind === 'tool'){
     const e = n.e;
@@ -530,7 +530,7 @@ function renderInspector(){
     body += `<div><div class="sec">Touched by</div><div class="list">${n.touches.map(t => `<button class="row" data-sel="${esc(t.agent.id)}"><i style="background:${t.write ? COL.write : COL.read}"></i><span class="t">${esc(t.agent.label)}<small>${esc(t.session.name)}</small></span><span class="d">${t.write ? 'edit' : 'read'} · ${ago(now - t.t)}</span></button>`).join('')}</div></div>`;
   }
   if (data.herdr && n.s && (n.kind === 'session' || n.kind === 'agent'))
-    body = `<div class="jump"><button data-jump="${n.s.pid}">Jump to terminal pane</button><span>${esc(jumpMsg[n.s.pid] || '')}</span></div>` + body;
+    body = `<div class="jump"><button data-jump="${esc(n.s.pid)}">Jump to terminal pane</button><span>${esc(jumpMsg[n.s.pid] || '')}</span></div>` + body;
   // re-rendered every poll: keep the reader's scroll position while the same node stays selected
   const keep = box.dataset.id === n.id ? [...box.querySelectorAll('.ins-body, pre.io')].map(x => x.scrollTop) : [];
   box.dataset.id = n.id;

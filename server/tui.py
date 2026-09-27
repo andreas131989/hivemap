@@ -23,6 +23,7 @@ import overlay
 COLOR = {'read': 36, 'write': 33, 'exec': 35, 'agent': 34, 'web': 32, 'mcp': 32, 'prompt': 37, 'other': 37}
 KEY = re.compile(r'\x1b\[<\d+;\d+;\d+[mM]|\x1b\[[0-9;]*[~A-Za-z]|\x1bO[A-Z]|.', re.S)
 MOUSE = re.compile(r'\x1b\[<(\d+);(\d+);(\d+)M')
+CUT = re.compile(r'\x1b(O|\[[^A-Za-z~]*)?$')   # an escape sequence the read ended in the middle of
 # Tool output can hold terminal escapes; drawing them raw would wreck the screen.
 UNSAFE = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)?|\x1b.?|[\x00-\x09\x0b-\x1f\x7f]')
 UP, DOWN, RIGHT, LEFT = ('\x1b[A', '\x1bOA', 'k'), ('\x1b[B', '\x1bOB', 'j'), ('\x1b[C', '\x1bOC', 'l'), ('\x1b[D', '\x1bOD', 'h')
@@ -45,6 +46,13 @@ def js_num(x):
     """A float as JavaScript's String(x) writes it, so call ids match the web page's."""
     r = repr(x)
     return r[:-2] if r.endswith('.0') else r
+
+
+def split_keys(data):
+    """Keys and mouse events in data, plus any escape sequence cut off at the end (prepend it to the next read)."""
+    m = CUT.search(data)
+    rest = data[m.start():] if m else ''
+    return KEY.findall(data[:len(data) - len(rest)]), rest
 
 
 def fit(parts, width, sel=False):
@@ -157,7 +165,7 @@ def main():
     sys.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h')
     sel, idx, top, scroll, closed, follow, msg, fetched = None, 0, 0, 0, set(), False, '', 0
     focus, cur, opened, dscroll, start, head_n = 'tree', None, None, 0, 0, 0
-    seen_v, sent, adopt = 0, None, True
+    seen_v, sent, adopt, pending = 0, None, True, ''
     try:
         while True:
             if time.time() - fetched >= 1:
@@ -225,7 +233,8 @@ def main():
             if not select.select([fd], [], [], max(0.05, 1 - (time.time() - fetched)))[0]:
                 continue
             msg = ''
-            for k in KEY.findall(os.read(fd, 256).decode(errors='ignore')):
+            keys_in, pending = split_keys(pending + os.read(fd, 256).decode(errors='ignore'))
+            for k in keys_in:
                 row = rs[idx] if rs else None
                 m = MOUSE.match(k)
                 if k == 'q':
@@ -240,7 +249,7 @@ def main():
                             scroll -= 3 * step
                     elif b in (64, 65):
                         idx, follow, scroll, cur, focus = idx + step, False, 0, None, 'tree'
-                    elif b == 0 and x <= lw and top + y - 1 < len(rs):
+                    elif b == 0 and x <= lw and y <= body and top + y - 1 < len(rs):
                         hit = top + y - 1
                         if hit == idx and rs[hit][2] is None:
                             closed ^= {rs[hit][1]['id']}
@@ -252,14 +261,16 @@ def main():
                     if k in UP or k in DOWN:
                         dscroll += -1 if k in UP else 1
                     elif k in (PGUP, PGDN):
-                        dscroll += (body - 3) * (-1 if k == PGUP else 1)
-                    elif k in LEFT or k == TAB or k in BACK:
+                        dscroll += max(1, body - 3) * (-1 if k == PGUP else 1)
+                    elif k in LEFT or k == TAB or k in BACK:   # back to the list, on the call that was open
                         focus = 'events'
+                        cur = next((i for i, e in enumerate(events) if (e['t0'], e['n']) == opened), cur)
                 elif focus == 'events':
                     if (k in UP or k in DOWN) and events:
                         cur = clamp((len(events) if cur is None else cur) + (-1 if k in UP else 1), 0, len(events) - 1)
                     elif k in (PGUP, PGDN) and events:
-                        cur = clamp(cur + (body - 6) * (-1 if k == PGUP else 1), 0, len(events) - 1)
+                        cur = clamp((len(events) - 1 if cur is None else cur) + max(1, body - 6) * (-1 if k == PGUP else 1),
+                                    0, len(events) - 1)
                     elif (k in ENTER or k in RIGHT) and cur is not None:
                         focus, opened, dscroll = 'detail', (events[cur]['t0'], events[cur]['n']), 0
                     elif k in LEFT or k == TAB or k in BACK:
@@ -275,8 +286,10 @@ def main():
                     idx = keys.index((row[1]['id'], None))
                 elif k == ' ' and row:
                     closed ^= {row[1]['id']}
+                    if row[1]['id'] in closed:   # its agent rows are gone: stay on the session
+                        idx = keys.index((row[1]['id'], None))
                 elif k in (PGUP, PGDN):
-                    scroll += (body - 6) * (1 if k == PGUP else -1)
+                    scroll += max(1, body - 6) * (1 if k == PGUP else -1)
                 elif k == 'f':
                     follow = not follow
                 elif (k in ENTER and row) or (k.isdigit() and 0 < int(k) <= len(st['sessions'])):

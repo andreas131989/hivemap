@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import overlay
-from tui import js_num
+from tui import js_num, split_keys
 
 
 def line(**d):
@@ -52,6 +52,31 @@ def main():
     lite = overlay.agent_json('main', None, 'main', 'main', t, False, call['t1'], False)['events'][1]
     full = overlay.agent_json('main', None, 'main', 'main', t, False, call['t1'], True)['events'][1]
     assert 'in' not in lite and 'out' not in lite and 'id' not in lite and full['out'] == 'boom'
+
+    # messy input: null usage, a junk block, bad UTF-8, then an interrupt and a compaction summary
+    p2 = tmp / 'sid2.jsonl'
+    p2.write_bytes((
+        line(type='assistant', timestamp='2026-01-01T11:00:00Z', message={'usage': {'input_tokens': None, 'cache_read_input_tokens': 7},
+             'content': ['junk', {'type': 'tool_use', 'id': 'a', 'name': 'Read', 'input': {'file_path': '/x/café.py'}}]})
+        + line(type='user', timestamp='2026-01-01T11:00:05Z', message={'content': [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}]})
+        + line(type='user', timestamp='2026-01-01T11:00:06Z', isCompactSummary=True, message={'content': 'This session is being continued...'})
+        + line(type='user', timestamp='2026-01-01T11:00:07Z', message={'content': 'real prompt'})
+    ).encode().replace(b'caf\\u00e9', b'caf\xff'))
+    t2 = overlay.Tail(p2).poll()
+    read, prompt = t2.events
+    assert t2.ctx == 7 and read['n'] == 'Read' and read['s'] == 'caf�.py', read
+    assert read['t1'] is not None and not t2.open, 'an interrupt closes what was running'
+    assert prompt['s'] == 'real prompt', 'interrupt notices and compaction summaries are not prompts'
+
+    # the transcript is replaced by a shorter file: start over instead of going quiet
+    p2.write_text(line(type='user', timestamp='2026-01-01T12:00:00Z', message={'content': 'fresh'}))
+    assert [e['s'] for e in t2.poll().events] == ['fresh']
+
+    # a mouse event cut in half by a read is kept whole for the next read, not typed as digits
+    keys, rest = split_keys('j\x1b[<65;30;1')
+    assert (keys, rest) == (['j'], '\x1b[<65;30;1')
+    assert split_keys(rest + '0M') == (['\x1b[<65;30;10M'], '')
+    assert split_keys('\x1b[A\x1bO') == (['\x1b[A'], '\x1bO')
     print('ok')
 
 
