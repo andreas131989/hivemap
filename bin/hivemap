@@ -2,7 +2,7 @@
 # hivemap — live map of your Claude Code sessions.
 #   hivemap          start the server if needed and open the map window
 #   hivemap tui      show the map in this terminal
-#   hivemap pane     show it in a new herdr pane beside this one
+#   hivemap pane     show it in a new herdr or tmux pane beside this one
 #   hivemap serve    start the server only (also: start)
 #   hivemap status   say whether it is running
 #   hivemap stop     stop the server
@@ -22,14 +22,25 @@ case "${1:-open}" in
   # matches only this port's server: never an editor with the file open, never another instance
   # (the interpreter shows up as python3 on Linux but as .../Python.app/.../Python on macOS)
   stop)   if pkill -f "^[^ ]*[Pp]ython[0-9.]* [^ ]*hivemap[^ ]*/server/overlay\\.py $PORT\$"; then echo "hivemap stopped"; else echo "hivemap was not running"; fi; exit 0 ;;
-  pane)
-    [ -n "${HERDR_PANE_ID:-}" ] || { echo "hivemap: not inside herdr, run 'hivemap tui' instead" >&2; exit 1; }
-    if pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
-        && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null; then
-      echo "hivemap: map open in herdr pane $pane"
-      exit 0
+  pane)   # the terminal view in a new pane beside this one, leaving the cursor where it is
+    if [ -n "${HERDR_PANE_ID:-}" ]; then
+      if pane=$(herdr pane split --current --direction right --ratio 0.4 --no-focus | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])') \
+          && herdr pane run "$pane" "$ROOT/bin/hivemap tui" >/dev/null; then
+        echo "hivemap: map open in herdr pane $pane"
+        exit 0
+      fi
+      echo "hivemap: could not open a herdr pane" >&2
+      exit 1
+    elif [ -n "${TMUX:-}" ]; then
+      # split the pane we were run from (no arrays: macOS ships bash 3.2, where an empty one trips set -u)
+      if pane=$(tmux split-window -h -d -l 40% ${TMUX_PANE:+-t "$TMUX_PANE"} -e "HIVEMAP_PORT=$PORT" -P -F '#{pane_id}' "$ROOT/bin/hivemap tui"); then
+        echo "hivemap: map open in tmux pane $pane"
+        exit 0
+      fi
+      echo "hivemap: could not open a tmux pane" >&2
+      exit 1
     fi
-    echo "hivemap: could not open a herdr pane" >&2
+    echo "hivemap: not inside herdr or tmux, run 'hivemap tui' instead" >&2
     exit 1 ;;
   open|serve|start|tui) ;;
   *) echo "usage: hivemap [open|tui|pane|serve|start|status|stop]" >&2; exit 2 ;;

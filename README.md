@@ -54,7 +54,7 @@ ln -s ~/.local/share/hivemap/fish/hivemap.fish ~/.config/fish/completions/hivema
 | In Claude Code | In a shell | What it does |
 |---|---|---|
 | `/hivemap:map` | `hivemap` | Start the server if needed and open the web map |
-| `/hivemap:map pane` | `hivemap pane` | Open the terminal view in a new herdr pane beside this one |
+| `/hivemap:map pane` | `hivemap pane` | Open the terminal view in a new tmux or herdr pane beside this one |
 | | `hivemap tui` | Open the terminal view in this terminal |
 | `/hivemap:map start` | `hivemap start` | Start the server only (`serve` works too) |
 | `/hivemap:map status` | `hivemap status` | Say whether the server is running |

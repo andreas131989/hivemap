@@ -1,11 +1,13 @@
 """bin/hivemap, run for real with its own HOME and port so it never touches the user's setup."""
 import os
+import shutil
 import socket
 import subprocess
 import tempfile
 import time
 import unittest
 import urllib.request
+from pathlib import Path
 
 from tests import ROOT
 
@@ -83,12 +85,38 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn('usage:', r.stderr)
 
-    def test_pane_outside_herdr(self):
-        env = {k: v for k, v in self.env.items() if not k.startswith('HERDR')}
-        r = subprocess.run([LAUNCHER, 'pane'], env=env, capture_output=True, text=True, timeout=30)
-        self.assertEqual(r.returncode, 1)
-        self.assertIn('not inside herdr', r.stderr)
+    def plain_env(self):
+        """This test's env minus any herdr or tmux the tester happens to be running in."""
+        return {k: v for k, v in self.env.items() if not k.startswith(('HERDR', 'TMUX'))}
 
+    def test_pane_outside_herdr_and_tmux(self):
+        r = subprocess.run([LAUNCHER, 'pane'], env=self.plain_env(), capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('not inside herdr or tmux', r.stderr)
+
+    @unittest.skipUnless(shutil.which('tmux'), 'tmux not installed')
+    def test_pane_inside_tmux(self):
+        sock, out = f'hivemap-pane-{os.getpid()}', os.path.join(self.home.name, 'pane.out')
+        tmux = lambda *a: subprocess.run(['tmux', '-L', sock, *a], env=self.plain_env(), capture_output=True, text=True, timeout=10)
+        tmux('new-session', '-d', '-x', '160', '-y', '30', f'{LAUNCHER} pane > {out} 2>&1; sleep 60')
+        try:
+            for _ in range(100):
+                if os.path.exists(out) and 'open in tmux pane' in Path(out).read_text():
+                    break
+                time.sleep(0.1)
+            self.assertIn('open in tmux pane', Path(out).read_text())
+            panes = [p.split() for p in tmux('list-panes', '-F', '#{pane_id} #{pane_active} #{pane_width}').stdout.splitlines()]
+            self.assertEqual(len(panes), 2, panes)
+            (first, first_active, _), (new, new_active, width) = panes
+            self.assertEqual((first_active, new_active), ('1', '0'), 'the cursor stays in the pane it was run from')
+            self.assertAlmostEqual(int(width), 64, delta=3, msg='the view takes about 40% of the width')
+            for _ in range(100):   # the new pane is running the terminal view (an empty fake ~/.claude)
+                if 'no running Claude Code sessions' in tmux('capture-pane', '-p', '-t', new).stdout:
+                    break
+                time.sleep(0.1)
+            self.assertIn('no running Claude Code sessions', tmux('capture-pane', '-p', '-t', new).stdout)
+        finally:
+            tmux('kill-server')
 
 if __name__ == '__main__':
     unittest.main()
