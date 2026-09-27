@@ -49,7 +49,7 @@ sends nothing anywhere and serves only on `127.0.0.1`. Not affiliated with Anthr
 
 ## Requirements
 
-- Linux or macOS (CI runs the whole suite on both; opening the browser window on macOS is the one step no test covers yet, reports welcome)
+- Linux or macOS (CI runs the whole suite on both, including launching the map window on macOS)
 - Python 3.9 or newer, standard library only
 - `bash`, `curl` and `pkill` (standard on most distributions)
 - Chrome, Chromium, Brave or Edge for the web map window (anything else opens in your default browser)
